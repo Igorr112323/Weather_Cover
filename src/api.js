@@ -170,9 +170,13 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v))
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function fetchWeather(location, demo = false) {
-  if (demo || navigator.userAgent.includes('Electron') === false) {
-    const real = await tryRemote(location)
+  if (!demo && navigator.userAgent.includes('Electron') === false) {
+    const real = await Promise.race([tryRemote(location), delay(3200).then(() => null)])
     if (real) return real
   }
   const generated = generateWeather(location, true)
@@ -195,7 +199,7 @@ async function tryRemote(location) {
       forecast_days: '7'
     })
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 7000)
+    const timer = setTimeout(() => controller.abort(), 3500)
     const r = await fetch(`${FORECAST}?${params}`, { signal: controller.signal })
     clearTimeout(timer)
     if (!r.ok) return null
