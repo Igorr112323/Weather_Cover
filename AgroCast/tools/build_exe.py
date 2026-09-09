@@ -30,13 +30,17 @@ LOG = DIST / "build_exe.log"
 
 
 def log(msg: str = "") -> None:
-    print(msg, flush=True)
-    if LOG:
-        try:
+    # сначала в файл — консоль CI может оборваться, а лог должен уцелеть
+    try:
+        if LOG:
             with LOG.open("a", encoding="utf-8") as f:
                 f.write(str(msg) + "\n")
-        except Exception:
-            pass
+    except Exception:
+        pass
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
 
 
 def run(cmd: list[str], cwd: Path = ROOT, check: bool = True, timeout: int = 900) -> int:
@@ -138,7 +142,13 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         log("")
         log("===== TRACEBACK =====")
-        log(traceback.format_exc())
+        tb = traceback.format_exc()
+        log(tb)
+        # дополнительная страховка: traceback отдельным файлом
+        try:
+            (DIST / "build_error.txt").write_text(tb, encoding="utf-8")
+        except Exception:
+            pass
         emit_error(f"AgroCast build failed: {exc}")
         return 4
 

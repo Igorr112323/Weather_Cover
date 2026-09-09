@@ -85,12 +85,18 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path("dist/build_exe.log")
-          if p.exists():
-              text = p.read_text(encoding="utf-8", errors="replace")
+          candidates = [Path("dist/build_error.txt"), Path("dist/build_exe.log")]
+          text = ""
+          src = ""
+          for p in candidates:
+              if p.exists():
+                  text = p.read_text(encoding="utf-8", errors="replace")
+                  src = p.name
+                  break
+          if not text.strip():
+              print("::error title=no log::ни build_error.txt, ни build_exe.log не найдены")
+          else:
               body = text[-3800:] or "log пуст"
               enc = body.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-              print("::error title=AgroCast build log (END)::" + enc)
-          else:
-              print("::error title=no log::dist/build_exe.log отсутствует")
+              print(f"::error title=AgroCast build log (END, {src})::{enc}")
           PY
