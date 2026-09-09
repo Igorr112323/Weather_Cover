@@ -6,15 +6,11 @@
   <title>AgroCast [2.5] — локальные агропрогнозы · Краснодарский край</title>
   <link rel="icon" type="image/png" href="/assets/favicon.png" />
   <link rel="stylesheet" href="/assets/desktop.css" />
-  <!-- Leaflet: fallback-карта, локальный вендор с integrity -->
-  <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css"
-        integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="" />
-  <!-- Яндекс.Карта 2.1 — основная карта -->
-  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU"></script>
+  <!-- Локальный движок карты: интерфейс появляется сразу, без ожидания внешнего API -->
+  <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" />
   <!-- QWebChannel (QtWebEngine). В обычном браузере отсутствует — безопасно игнорируется -->
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-  <script defer src="/assets/vendor/leaflet/leaflet.js"
-          integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin=""></script>
+  <script defer src="/assets/vendor/leaflet/leaflet.js"></script>
   <script type="module" src="/assets/desktop.js"></script>
 </head>
 <body>
@@ -36,7 +32,7 @@
       <h1 class="splash-title">AgroCast&nbsp;<span>2.5</span></h1>
       <div id="bootStep" class="splash-step">Стартуем…</div>
       <div class="splash-bar"><i id="bootFill"></i></div>
-      <p class="splash-sub">локальные прогнозы · Краснодарский край · 28 точек</p>
+      <p class="splash-sub">локальные прогнозы · Россия · свободный выбор точки</p>
     </div>
   </div>
 
@@ -49,13 +45,13 @@
         </div>
         <div class="brand-text">
           <h1>AgroCast <span class="ver">2.5</span></h1>
-          <p class="tagline">локальные прогнозы · Краснодарский край · 28 точек P01–P28 · Яндекс.Карта · версия 2.5</p>
+          <p class="tagline">агрометеорологический кабинет · свободный выбор точки по всей России</p>
         </div>
       </div>
 
       <div class="top-actions">
-        <span class="badge ok" id="netBadge" title="Внешние сервисы: Яндекс.Карта">
-          <span class="dot"></span> интернет есть · Яндекс.Карта
+        <span class="badge ok" id="netBadge" title="Карта OpenStreetMap">
+          <span class="dot"></span> карта готова · Россия
         </span>
         <span class="sep"></span>
         <button id="btnPrint" class="btn ghost" title="Печать активного отчёта в PDF">
@@ -72,29 +68,25 @@
       <section class="map-col card">
         <div class="map-head">
           <div class="mh-text">
-            <h2>Карта точек</h2>
-            <p>Кликните по карте — выберется ближайшая точка сетки</p>
+            <h2>Выберите место</h2>
+            <p>Нажмите в любой точке России — прогноз привяжется точно к ней</p>
           </div>
           <div class="mh-right">
-            <span class="tag">P01–P28 · Краснодарский край</span>
+            <span class="tag">Свободный выбор · без сетки</span>
           </div>
         </div>
 
         <div id="map">
           <div class="map-empty" id="mapEmpty">Загружаем карту…</div>
           <div class="map-chips">
-            <span class="chip" id="mapMode" title="Режим карты">Яндекс.Карта</span>
-            <span class="chip coords" id="coordChip" title="Выбранная точка">P– · —</span>
+            <span class="chip" id="mapMode" title="Режим карты">OpenStreetMap</span>
+            <span class="chip coords" id="coordChip" title="Выбранная точка">Точка не выбрана</span>
           </div>
         </div>
 
         <div class="map-footer">
-          <div class="legend-dots">
-            <span class="ld"><i class="sw-dot green"></i>точка</span>
-            <span class="ld"><i class="sw-dot yellow"></i>наведение</span>
-            <span class="ld"><i class="sw-dot red"></i>выбрана</span>
-          </div>
-          <span class="mf-status">Яндекс.Карта + 28 точек — карта работает</span>
+          <div class="legend-dots"><span class="ld"><i class="sw-dot red"></i>ваше поле</span></div>
+          <span class="mf-status">Перетаскивайте маркер для точной настройки</span>
         </div>
       </section>
 
@@ -132,9 +124,9 @@
           </div>
 
           <div class="grid2">
-            <label class="field">
-              <span class="f-label">Точка сетки</span>
-              <select id="point" class="input select-arrow"></select>
+            <label class="field location-field">
+              <span class="f-label">Координаты поля</span>
+              <select id="point" class="input select-arrow"><option value="">Выберите точку на карте</option></select>
             </label>
             <label class="field">
               <span class="f-label">Сорт кукурузы</span>
@@ -142,7 +134,7 @@
             </label>
           </div>
 
-          <div class="sel-strip" id="selInfo">Кликните по карте, чтобы выбрать точку</div>
+          <div class="sel-strip" id="selInfo">Нажмите на карту в пределах России</div>
 
           <div class="run-row">
             <button id="btnForecast" class="btn primary big">

@@ -587,3 +587,24 @@ table.data tr:hover td{background:#f7faf7}
   *,*::before,*::after{animation-duration:.001s !important;animation-iteration-count:1 !important;
     transition-duration:.001s !important}
 }
+
+/* ==========================================================================
+   AgroCast 2.6 — рабочая консоль. Спокойная профессиональная композиция.
+   ========================================================================== */
+:root{--bg:#eef1ed;--card:#fff;--ink:#172019;--muted:#667269;--line:#dfe5df;--accent:#185c36;--accent2:#278052;--gold:#d9a441;--radius:12px;--shadow:0 10px 35px rgba(20,35,25,.08)}
+body{background:#eef1ed;font-size:13px}
+#bootSplash{background:#13261b}.aurora{display:none}.splash-ring{opacity:.8}.splash-logo{border-radius:20px}.splash-sub{display:none}
+.topbar{height:68px;padding:0 24px;background:#14271c;color:#fff;border:0;box-shadow:none;flex-wrap:nowrap}
+.logo{width:40px;height:40px;border-radius:9px}.logo-ring::after{display:none}.brand-text h1{font-size:17px}.brand .ver{background:#2b4937;color:#bde1c8}.tagline{color:#aebdb3;max-width:45vw}.badge.ok{background:#203d2c;color:#cbe7d3;border-color:#355843}.badge .dot{animation:none}.sep{background:#35503e}
+.topbar .btn.ghost{background:transparent;color:#dce7df;border-color:#385242;min-height:36px}.topbar .btn.ghost:hover{background:#203d2c;color:#fff}
+#columns{gap:0;padding:0;grid-template-columns:minmax(0,1.45fr) minmax(430px,.8fr);background:#dfe5df}
+.map-col{border:0;border-radius:0;box-shadow:none}.map-head{height:67px;padding:0 22px;background:#fff}.mh-text h2{font-size:17px}.tag{background:#f0f5f1;border:0;color:#375844}
+#map{min-height:0;background:#dfe8df}.map-footer{height:42px;padding:0 20px;background:#fff}.mf-status{color:var(--muted);font-weight:600}
+.side-col{gap:0;background:#f6f7f5;border-left:1px solid #cfd8d1;overflow:hidden}.panel{border:0;border-radius:0;box-shadow:none}.forecast-panel{padding:20px 22px 16px;border-bottom:1px solid var(--line)}
+.panel-head{margin-bottom:18px}.ph-left h2{font-size:19px}.ph-left h2::first-letter{font-size:0}.pill-hint{background:#f5efe1;border:0}.grid2{gap:12px}.field{margin-bottom:11px}.f-label{font-size:10px;color:#718078}.input{border:1px solid #ccd7ce;border-radius:8px;padding:10px 11px;font-weight:500}.seg{border:0;border-radius:8px}.seg-btn{border-radius:6px}
+.sel-strip{display:flex!important;justify-content:space-between;align-items:center;gap:10px;background:#f1f4f1!important;border:1px dashed #b8c5ba!important;border-radius:8px!important;color:#667269!important;padding:10px 12px!important}.sel-strip.selected{background:#e8f3eb!important;border:1px solid #b9d7c1!important;color:#174c2d!important}.sel-strip span{font-variant-numeric:tabular-nums;color:#55705e;font-size:11px}
+.run-row{margin-top:4px}.btn{border-radius:8px;min-height:38px}.btn.big{min-height:46px;border-radius:8px}.btn.primary{background:#185c36;box-shadow:0 5px 14px rgba(24,92,54,.22)}.btn.primary::after{display:none}
+.tabs{margin:0!important;padding:10px 16px 0!important;border-radius:0!important;background:#f6f7f5!important;border:0!important;border-bottom:1px solid var(--line)!important}.tab{border-radius:7px!important}.tab-thumb{border-radius:7px!important}.panes{margin:0 16px 16px!important;border-radius:0 0 10px 10px!important;box-shadow:none!important;border:1px solid var(--line)!important;border-top:0!important}
+.map-chips{top:14px;right:14px}.chip{border:0;border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.16)}.chip.coords{background:#14271c;border-radius:7px;font-size:12px}
+.leaflet-control-zoom a{color:#174c2d!important}.leaflet-control-attribution{font-size:9px!important}
+@media(max-width:1160px){#columns{grid-template-columns:1fr}.topbar{height:auto;min-height:64px}.map-col{min-height:58vh}.side-col{border-left:0;border-top:1px solid #ccd6ce}}

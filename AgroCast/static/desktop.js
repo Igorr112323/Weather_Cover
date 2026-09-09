@@ -5,9 +5,9 @@
 "use strict";
 
 /* ---------------------------------- константы ---------------------------- */
-const VERSION = "2.5";
-const REGION_NAME = "Краснодарский край";
-const REGION_BOUNDS = [[43.2, 36.1], [47.3, 42.4]];   // [ [lat,lon],[lat,lon] ]
+const VERSION = "2.6";
+const REGION_NAME = "Россия";
+const REGION_BOUNDS = [[41.0, 19.0], [82.0, 180.0]];   // [ [lat,lon],[lat,lon] ]
 const KRAI_RECT = [[44.0, 37.0], [46.5, 40.5]];
 const YMAPS_CENTER = [45.3, 39.0];
 const YMAPS_ZOOM = 8;
@@ -29,7 +29,8 @@ const state = {
   grid: [],              // клетки из /api/region/grid
   crops: [],             // сорта из /api/local/crops
   markers: {},           // id -> объект маркера
-  selected: null,        // выбранный id точки
+  selected: null,        // идентификатор произвольной точки
+  selectedPoint: null,   // {lat, lon, name}
   hovered: null,
   running: false,
   abortCtrl: null,
@@ -170,14 +171,14 @@ function bootSplash() {
     setTimeout(() => el.remove(), 650);
   };
   const grow = () => {
-    const p = Math.min(100, ((performance.now() - t0) / 1350) * 100);
+    const p = Math.min(100, ((performance.now() - t0) / 650) * 100);
     if (fill) fill.style.width = p + "%";
     if (p < 100) requestAnimationFrame(grow);
     else finish();
   };
   requestAnimationFrame(grow);
   // страховка: сплеш не должен «зависнуть» дольше 2.2 с
-  setTimeout(finish, 2200);
+  setTimeout(finish, 1100);
 }
 
 /* ---------------------------------- API ---------------------------------- */
@@ -190,287 +191,60 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-/* ---------------------------------- селекты ------------------------------ */
+/* ---------------------------------- выбор параметров --------------------- */
 function fillSelects() {
-  const selP = $("#point"), selC = $("#crop");
-  selP.innerHTML = "";
-  state.grid.forEach((c, i) => {
-    const o = document.createElement("option");
-    o.value = c.id;
-    o.textContent = `${c.id} · ${c.name}`;
-    o.dataset.lat = c.lat; o.dataset.lon = c.lon;
-    selP.appendChild(o);
-  });
+  const selC = $("#crop");
   selC.innerHTML = '<option value="">— выберите сорт —</option>';
-  state.crops.forEach((c) => {
-    const o = document.createElement("option");
-    o.value = c.id;
-    o.textContent = c.name;
-    selC.appendChild(o);
-  });
-  // восстановление последнего выбора
+  state.crops.forEach((c) => { const o=document.createElement("option"); o.value=c.id; o.textContent=c.name; selC.appendChild(o); });
   const saved = loadLS(LS_SEL, {});
-  if (saved.point && [...selP.options].some((o) => o.value === saved.point)) selP.value = saved.point;
-  if (saved.crop && [...selC.options].some((o) => o.value === saved.crop)) selC.value = saved.crop;
-  // если сортов нет вообще — первый станет выбранным после загрузки; здесь просто подскажем
-  if (!selC.value && state.crops.length) selC.value = state.crops[0].id;
-  if (!selP.value && state.grid.length) selP.value = state.grid[0].id;
+  if (saved.crop && [...selC.options].some((o)=>o.value===saved.crop)) selC.value=saved.crop;
+  if (!selC.value && state.crops.length) selC.value=state.crops[0].id;
+  if (Number.isFinite(saved.lat) && Number.isFinite(saved.lon)) setFreePoint(saved.lat, saved.lon, {pan:false, quiet:true});
 }
 function persistSelection() {
-  saveLS(LS_SEL, {
-    point: $("#point").value || state.selected,
-    crop: $("#crop").value,
-    issue: $("#issue").value || currentMonth(),
-    horizon: $("#horizon").value || "3",
-  });
+  saveLS(LS_SEL, {crop:$("#crop").value, issue:$("#issue").value||currentMonth(), horizon:$("#horizon").value||"3",
+    lat:state.selectedPoint?.lat, lon:state.selectedPoint?.lon});
 }
-function syncSegHorizon() {
-  const v = $("#horizon").value;
-  $$("#segHorizon .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
-}
+function syncSegHorizon() { const v=$("#horizon").value; $$("#segHorizon .seg-btn").forEach((b)=>b.classList.toggle("active",b.dataset.v===v)); }
 
 /* ---------------------------------- карта -------------------------------- */
-function cellById(id) { return state.grid.find((c) => c.id === id); }
-
-function mapBaseState(id) { return (id === state.selected) ? "red" : "green"; }
-
-function setCoordChip(id) {
-  const c = cellById(id);
-  const chip = $("#coordChip");
-  if (c) chip.textContent = `${c.id} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}`;
-  else chip.textContent = "P– · —";
-  const info = $("#selInfo");
-  if (c) {
-    const prev = state.selected ? cellById(state.selected) : null;
-    info.textContent = prev && prev.id !== c.id
-      ? `Выбрано: ${c.id} ${c.name} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)} (клик — ближайшая к указанному месту)`
-      : `Выбрано: ${c.id} ${c.name} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}`;
-    info.classList.remove("flash");
-    void info.offsetWidth; // перезапуск CSS-анимации
-    info.classList.add("flash");
-    setTimeout(() => info.classList.remove("flash"), 900);
+function cellById() { return state.selectedPoint; }
+function isInsideRussia(lat, lon) { return lat >= 41 && lat <= 82 && lon >= 19 && lon <= 180; }
+function pointLabel(p) { return `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`; }
+function setFreePoint(lat, lon, opts={}) {
+  lat=Number(lat); lon=Number(lon);
+  if (!isInsideRussia(lat,lon)) { if(!opts.quiet) toast("Выберите место в пределах России", "err"); return false; }
+  const id=`RU-${lat.toFixed(4)}-${lon.toFixed(4)}`;
+  state.selected=id; state.selectedPoint={id,lat,lon,name:"Выбранное поле"};
+  const sel=$("#point"); sel.innerHTML=""; const o=document.createElement("option"); o.value=id; o.textContent=pointLabel(state.selectedPoint); sel.appendChild(o); sel.value=id;
+  $("#coordChip").textContent=pointLabel(state.selectedPoint);
+  $("#selInfo").innerHTML=`<strong>Поле выбрано</strong><span>${lat.toFixed(4)}° с. ш. · ${lon.toFixed(4)}° в. д.</span>`;
+  $("#selInfo").classList.add("selected");
+  if (state.leafletMap) {
+    if (!state.freeMarker) {
+      state.freeMarker=L.marker([lat,lon],{draggable:true,icon:L.icon({iconUrl:MARKER_URL("red"),iconSize:[36,48],iconAnchor:[18,46]})}).addTo(state.leafletMap);
+      state.freeMarker.on("dragend",()=>{const x=state.freeMarker.getLatLng(); if(!setFreePoint(x.lat,x.lng,{pan:false})) state.freeMarker.setLatLng([state.selectedPoint.lat,state.selectedPoint.lon]);});
+    } else state.freeMarker.setLatLng([lat,lon]);
+    if(opts.pan!==false) state.leafletMap.panTo([lat,lon]);
   }
+  persistSelection(); if(!opts.quiet) toast("Точка сохранена", "ok"); return true;
 }
-
-function selectPoint(id, opts = {}) {  if (!cellById(id)) return;
-  const prev = state.selected;
-  state.selected = id;
-  setCoordChip(id);
-  $("#point").value = id;
-  persistSelection();
-  // обновляем цвета маркеров
-  if (prev && state.markers[prev]) setMarkerState(prev, mapBaseState(prev));
-  if (state.markers[id]) setMarkerState(id, "red");
-  // сместим центр, если просили
-  if (opts.pan !== false) {
-    const c = cellById(id);
-    if (state.yandexMap) state.yandexMap.panTo([c.lat, c.lon], { duration: 300 });
-    else if (state.leafletMap) state.leafletMap.panTo([c.lat, c.lon]);
-  }
-  if (opts.toast) {
-    const c = cellById(id);
-    toast(`Выбрана точка ${c.id} ${c.name} — ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}`, "ok");
-  }
-}
-
-/* --- Яндекс.Карта --- */
-function placemarkIcon(color) {
-  const href = MARKER_URL(color);
-  return {
-    iconLayout: "default#image",
-    iconImageHref: href,
-    iconImageSize: [36, 48],
-    iconImageOffset: [-18, -47],
-  };
-}
-function makeYandexMarker(c, color) {
-  const pm = new ymaps.Placemark(
-    [c.lat, c.lon],
-    {
-      balloonContentBody:
-        `<b>${esc(c.id)}</b> · ${esc(c.name)}<br>` +
-        `координаты: ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}<br>` +
-        `<span style="font-size:11px;color:#5a6e5d">кликните, чтобы выбрать</span>`,
-    },
-    placemarkIcon(color || mapBaseState(c.id))
-  );
-  pm.events.add("click", (e) => {
-    e.stopPropagation();
-    selectPoint(c.id, { toast: true });
-    pm.balloon.open();
-  });
-  pm.events.add("mouseenter", () => { if (state.hovered !== c.id) { state.hovered = c.id; if (state.markers[c.id]) setMarkerState(c.id, "yellow"); } });
-  pm.events.add("mouseleave", () => {
-    if (state.hovered === c.id) { state.hovered = null; if (state.markers[c.id]) setMarkerState(c.id, mapBaseState(c.id)); }
-  });
-  return pm;
-}
-function setMarkerState(id, color) {
-  if (!state.markers[id]) return;
-  const old = state.markers[id];
-  const c = cellById(id);
-  if (old.pm) state.yandexMap.geoObjects.remove(old.pm);
-  const pm = makeYandexMarker(c, color);
-  state.yandexMap.geoObjects.add(pm);
-  state.markers[id] = { pm, color };
-}
-function handleMapClick(lat, lon) {
-  const { cell, dist } = nearestGridPoint(lat, lon);
-  if (!cell) return;
-  selectPoint(cell.id, { pan: false });
-  if (dist > 60000) toast(`Клик далеко от точек — выбрана ближайшая ${cell.id} (${km(dist)})`);
-  else toast(`Выбрана ближайшая точка ${cell.id} · ${km(dist)} от клика`, "ok");
-}
-function initYandexMap() {
-  const myMap = new ymaps.Map(
-    $("#map"),
-    { center: YMAPS_CENTER, zoom: YMAPS_ZOOM, controls: ["zoomControl", "typeSelector", "fullscreenControl"] },
-    { suppressMapOpenBlock: true }
-  );
-  const krai = new ymaps.Rectangle(KRAI_RECT, {}, {
-    fillColor: "#1c6b3c33", strokeColor: "#1c6b3c", strokeWidth: 2, cursor: "default",
-  });
-  myMap.geoObjects.add(krai);
-  const mapClick = (e) => handleMapClick(e.get("coords")[0], e.get("coords")[1]);
-  myMap.events.add("click", mapClick);
-  krai.events.add("click", mapClick);
-  state.yandexMap = myMap;
-  state.mapReady = true;
-  state.grid.forEach((c) => {
-    const pm = makeYandexMarker(c);
-    myMap.geoObjects.add(pm);
-    state.markers[c.id] = { pm, color: "green" };
-  });
-  try { myMap.setBounds(REGION_BOUNDS, { checkZoomRange: true, zoomMargin: 48 }); } catch {}
-  state.mapApi = "yandex";
-  $("#mapMode").textContent = "Яндекс.Карта";
-  $("#mapMode").title = "Основная карта — Яндекс.Карты (при недоступности включается Leaflet OSM)";
+function chipsMarkup(){const w=document.createElement("div");w.className="map-chips";w.innerHTML='<span class="chip" id="mapMode">OpenStreetMap</span><span class="chip coords" id="coordChip">Точка не выбрана</span>';return w;}
+function hideMapEmpty(){const e=$("#mapEmpty");if(e)e.remove();}
+function leafletReady(){return new Promise(resolve=>{if(window.L)return resolve(true);const t=Date.now();const poll=()=>window.L?resolve(true):Date.now()-t>3000?resolve(false):setTimeout(poll,40);poll();});}
+async function initMap(){
+  if(!await leafletReady()){ $("#mapEmpty").textContent="Не удалось запустить локальный модуль карты"; return; }
+  const mapEl=$("#map"); mapEl.innerHTML=""; mapEl.appendChild(chipsMarkup());
+  const map=L.map(mapEl,{zoomControl:true,minZoom:2,maxZoom:18,preferCanvas:true,worldCopyJump:false}).setView([61,90],3);
+  state.leafletMap=map; state.mapApi="leaflet"; state.mapReady=true;
+  const tiles=L.tileLayer(OSM_TILE_URL,{maxZoom:18,attribution:'© OpenStreetMap',updateWhenIdle:true,keepBuffer:2}).addTo(map);
+  state.leafletTiles=tiles;
+  tiles.on("tileerror",()=>{$("#mapMode").textContent="Карта · нет сети";});
+  map.setMaxBounds([[38,15],[84,181]]);
+  map.on("click",e=>setFreePoint(e.latlng.lat,e.latlng.lng));
   hideMapEmpty();
-}
-
-/* --- Leaflet (fallback) --- */
-function leafletReady() {
-  return new Promise((resolve) => {
-    if (window.L) return resolve(true);
-    const t0 = Date.now();
-    const poll = () => {
-      if (window.L) resolve(true);
-      else if (Date.now() - t0 > 8000) resolve(false);
-      else setTimeout(poll, 60);
-    };
-    poll();
-  });
-}
-function markerIconLeaflet(color) {
-  return L.icon({
-    iconUrl: MARKER_URL(color),
-    iconSize: [36, 48],
-    iconAnchor: [18, 46],
-    popupAnchor: [0, -44],
-  });
-}
-function makeLeafletMarker(c) {
-  const m = L.marker([c.lat, c.lon], { icon: markerIconLeaflet(mapBaseState(c.id)), zIndexOffset: c.id === state.selected ? 400 : 0 })
-    .addTo(state.leafletMap);
-  m.bindTooltip(`${c.id} · ${c.name}`, { direction: "top", offset: [0, -40], opacity: 0.95 });
-  m.on("click", () => selectPoint(c.id, { toast: true, pan: false }));
-  m.on("mouseover", () => { state.hovered = c.id; if (state.markers[c.id]) setLeafletState(c.id, "yellow"); });
-  m.on("mouseout", () => { if (state.hovered === c.id) { state.hovered = null; if (state.markers[c.id]) setLeafletState(c.id, mapBaseState(c.id)); } });
-  return m;
-}
-function setLeafletState(id, color) {
-  const mk = state.markers[id];
-  if (mk) mk.m.setIcon(markerIconLeaflet(color));
-}
-function initLeafletMap() {
-  const mapEl = $("#map");
-  mapEl.innerHTML = "";
-  mapEl.appendChild(chipsMarkup());
-  const map = L.map(mapEl, { zoomControl: true, minZoom: 6, maxZoom: 12 })
-    .setView([45.3, 39.0], 7);
-  const krai = L.rectangle(REGION_BOUNDS, {
-    color: "#1c6b3c", weight: 2, fillColor: "#1c6b3c", fillOpacity: 0.10, dashArray: "6 4",
-  }).addTo(map);
-  krai.on("click", (e) => handleMapClick(e.latlng.lat, e.latlng.lng));
-  const tiles = L.tileLayer(OSM_TILE_URL, {
-    maxZoom: 12, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
-  tiles.on("tileerror", () => {
-    // сеть недоступна — убираем тайлы, оставляем узор + маркеры + полигон
-    try { tiles.remove(); } catch {}
-    state.leafletTiles = null;
-    $("#mapMode").textContent = "Leaflet · офлайн-фон";
-    toast("Тайлы OSM недоступны — карта показывает сетку и точки", "");
-  });
-  state.leafletMap = map;
-  state.leafletTiles = tiles;
-  map.on("click", (e) => {
-    const { cell, dist } = nearestGridPoint(e.latlng.lat, e.latlng.lng);
-    if (!cell) return;
-    selectPoint(cell.id, { pan: false });
-    if (dist > 60000) toast(`Клик далеко от точек — выбрана ближайшая ${cell.id} (${km(dist)})`);
-    else toast(`Выбрана ближайшая точка ${cell.id} · ${km(dist)} от клика`, "ok");
-  });
-  state.grid.forEach((c) => { state.markers[c.id] = { m: makeLeafletMarker(c) }; });
-  state.mapReady = true;
-  const cells = state.grid;
-  if (cells.length) {
-    try {
-      map.fitBounds(L.latLngBounds(cells.map((c) => [c.lat, c.lon])).pad(0.25), { maxZoom: 9 });
-    } catch {}
-  } else {
-    map.fitBounds(REGION_BOUNDS);
-  }
-  state.mapApi = "leaflet";
-  $("#mapMode").textContent = "Leaflet OSM";
-  if (state.selected) setCoordChip(state.selected);
-  hideMapEmpty();
-}
-function chipsMarkup() {
-  const wrap = document.createElement("div");
-  wrap.className = "map-chips";
-  wrap.innerHTML =
-    '<span class="chip" id="mapMode">Leaflet OSM</span>' +
-    '<span class="chip coords" id="coordChip">P– · —</span>';
-  return wrap;
-}
-function hideMapEmpty() {
-  const em = $("#mapEmpty");
-  if (em) em.remove();
-}
-function waitYandex(ms = 3000) {
-  return new Promise((resolve) => {
-    const t0 = Date.now();
-    const poll = () => {
-      if (window.ymaps) {
-        try { ymaps.ready(() => resolve(true)); } catch { resolve(false); }
-        return;
-      }
-      if (Date.now() - t0 > ms) resolve(false);
-      else setTimeout(poll, 70);
-    };
-    poll();
-  });
-}
-async function initMap() {
-  if (!state.grid.length) {
-    $("#mapEmpty").textContent = "Сетка точек не загрузилась — проверьте API";
-    return;
-  }
-  const yandexOk = await waitYandex(3000);
-  if (!yandexOk) {
-    console.warn("[agrocast] Яндекс.Карты не загрузились за 3 с — Leaflet OSM");
-    $("#mapMode").textContent = "Leaflet OSM";
-    await leafletReady();
-    try { initLeafletMap(); } catch (e) { console.error(e); toast("Карта недоступна: " + e.message, "err"); }
-    return;
-  }
-  try { initYandexMap(); }
-  catch (err) {
-    console.warn("[agrocast] Яндекс.Карта не поднялась, fallback Leaflet:", err);
-    await leafletReady();
-    try { initLeafletMap(); } catch (e2) { console.error(e2); toast("Карта недоступна: " + e2.message, "err"); }
-  }
+  const saved=loadLS(LS_SEL,{}); if(Number.isFinite(saved.lat)&&Number.isFinite(saved.lon)) setFreePoint(saved.lat,saved.lon,{pan:true,quiet:true});
+  setTimeout(()=>map.invalidateSize(),100);
 }
 
 /* ---------------------------------- сорта -------------------------------- */
@@ -900,7 +674,7 @@ function buildReport(payload, cropSnap, elapsed) {
     rid,
     appVersion: VERSION,
     pointId: payload.point_id,
-    pointName: payload.point_name || c?.name || payload.point_id,
+    pointName: payload.point_name || c?.name || "Выбранное поле",
     issue: payload.start,
     horizon: payload.horizon_months || 3,
     cropId: payload.crop_id,
@@ -945,7 +719,7 @@ async function runForecast() {
   logEl.textContent = "";
   const timer = startElapsed(statusEl);
 
-  const c = cellById(pointId);
+  const c = state.selectedPoint;
   const cropSnap = state.crops.find((x) => x.id === cropId) || null;
   const startedAt = Date.now();
   const finish = () => {
@@ -1099,9 +873,6 @@ function bindEvents() {
     else toast("Сначала сделайте прогноз — печатать пока нечего");
   });
   $("#btnJson").addEventListener("click", exportJson);
-  $("#point").addEventListener("change", (e) => {
-    selectPoint(e.target.value, { pan: true });
-  });
   $("#crop").addEventListener("change", () => { persistSelection(); markActiveCrop(); });
   $("#issue").addEventListener("change", () => persistSelection());
   $("#btnLogClose").addEventListener("click", () => {
@@ -1159,15 +930,9 @@ async function init() {
   moveTabThumb("tab-crops");
 
   // загрузка мира: сетка + сорта (параллельно)
-  const [gridData, cropsData] = await Promise.allSettled([
-    api("/api/region/grid"),
+  const [cropsData] = await Promise.allSettled([
     api("/api/local/crops"),
   ]);
-  if (gridData.status === "fulfilled" && gridData.value.cells?.length) {
-    state.grid = gridData.value.cells;
-  } else {
-    toast("Не удалось загрузить сетку точек /api/region/grid", "err");
-  }
   if (cropsData.status === "fulfilled") {
     state.crops = cropsData.value.crops || [];
   } else {
@@ -1184,14 +949,7 @@ async function init() {
   renderCrops();
   markActiveCrop();
 
-  // восстановить выбранную точку из сохранений/селекта
-  const savedPoint = $("#point").value;
-  if (savedPoint && cellById(savedPoint)) {
-    state.selected = savedPoint;
-    setCoordChip(savedPoint);
-  } else if (state.grid.length) {
-    selectPoint(state.grid[0].id, { pan: false });
-  }
+  // произвольная точка восстанавливается функцией fillSelects
 
   // плавающий индикатор вкладок — после того как раскладка устоялась
   requestAnimationFrame(() => requestAnimationFrame(() => moveTabThumb(activeTabName())));
