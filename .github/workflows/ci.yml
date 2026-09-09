@@ -71,7 +71,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd AgroCast
           gh release delete v2.5.0 --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
           gh release create v2.5.0 dist/AgroCast-2.5-exe.zip \
             --repo "$GITHUB_REPOSITORY" \
@@ -84,7 +83,6 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          cd AgroCast
           python - <<'PY'
           from pathlib import Path
           p = Path("dist/build_exe.log")
@@ -92,5 +90,5 @@ jobs:
               body = p.read_text(encoding="utf-8").replace("%", "%25").replace("\r", "")
               print("::error title=AgroCast build log::" + body.replace("\n", "%0A")[-7000:])
           else:
-              print("::error::build_exe.log отсутствует")
+              print("::error title=no log::dist/build_exe.log отсутствует")
           PY
