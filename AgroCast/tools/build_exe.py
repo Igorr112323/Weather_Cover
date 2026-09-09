@@ -39,42 +39,42 @@ def log(msg: str = "") -> None:
             pass
 
 
-def run(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess:
+def run(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> int:
     log(">>> " + " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
-    for line in (proc.stdout or "").splitlines():
-        log(line)
-    for line in (proc.stderr or "").splitlines():
-        log("STDERR: " + line)
+    proc = subprocess.Popen(
+        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        errors="replace",
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        log(line.rstrip("\n"))
+    proc.wait()
     if check and proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
-    return proc
+    return proc.returncode or 0
 
 
 def emit_error(title: str) -> None:
-    """Печатает аннотацию GitHub Actions с хвостом лога (её видно через API)."""
+    """Печатает аннотации GitHub Actions: хвост лога (видно через API)."""
     tail_lines = []
     try:
         if LOG.is_file():
-            tail_lines = LOG.read_text(encoding="utf-8").splitlines()[-45:]
+            tail_lines = LOG.read_text(encoding="utf-8").splitlines()
     except Exception:
         pass
     body = "\n".join(tail_lines) or title
-    # ::error:: с кодировкой перевода строк для GitHub
-    encoded = body.replace("\r", "").replace("%", "%25").replace("\n", "%0A")
-    print(f"::error title={title}::{encoded}", flush=True)
+    enc = body.replace("\r", "").replace("%", "%25").replace("\n", "%0A")
+
+    def ann(t: str, b: str) -> None:
+        print(f"::error title={t}::{b}", flush=True)
+
+    ann(f"{title} (tail 9000)", enc[-9000:])
+    ann(f"{title} (LAST 1200)", enc[-1200:])
 
 
 def build_pyinstaller() -> None:
     sep = ";" if sys.platform == "win32" else ":"
-    # 1) spec-сборка (основной путь)
     spec = ROOT / "AgroCast.spec"
-    try:
-        run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)])
-        return
-    except subprocess.CalledProcessError:
-        log("spec-сборка не удалась — пробую эквивалентную CLI-команду PyInstaller")
-    # 2) fallback: CLI-команда из ТЗ
     cli = [
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
         "--onedir", "--windowed", "--name", "AgroCast",
@@ -85,7 +85,17 @@ def build_pyinstaller() -> None:
         "--collect-all", "PySide6",
         str(ROOT / "app.py"),
     ]
-    run(cli)
+    attempts = [("spec", [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)]),
+                ("cli-fallback", cli),
+                ("spec-retry", [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)])]
+    for i, (label, cmd) in enumerate(attempts, 1):
+        try:
+            run(cmd)
+            log(f"PyInstaller OK ({label}, попытка {i})")
+            return
+        except subprocess.CalledProcessError as exc:
+            log(f"попытка {i} ({label}) не удалась: rc={exc.returncode}")
+    raise RuntimeError("PyInstaller: все попытки сборки не удались")
 
 
 def main() -> int:
