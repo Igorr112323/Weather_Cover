@@ -82,12 +82,11 @@ def build_pyinstaller() -> None:
         "--add-data", f"static{sep}static",
         "--add-data", f"world{sep}world",
         "--add-data", f"migrations{sep}migrations",
-        "--collect-all", "PySide6",
+        # без --collect-all PySide6: нужные Qt-модули подтянутся сами по импортам
         str(ROOT / "app.py"),
     ]
     attempts = [("spec", [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)]),
-                ("cli-fallback", cli),
-                ("spec-retry", [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)])]
+                ("cli-fallback", cli)]
     for i, (label, cmd) in enumerate(attempts, 1):
         try:
             run(cmd)
