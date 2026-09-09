@@ -1,0 +1,10 @@
+# AgroCast 2.5 — каркасное десктоп-приложение (без реальных расчётов)
+# Python 3.11
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+python-multipart>=0.0.9
+# Десктоп-оболочка:
+PySide6>=6.6
+# Сборка EXE (используется tools/build_exe.py / .spec):
+pyinstaller>=6.6

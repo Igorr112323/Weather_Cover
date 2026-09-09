@@ -1,0 +1,11 @@
+{
+  "region": "Краснодарский край",
+  "lat_min": 43.0,
+  "lat_max": 47.0,
+  "lon_min": 37.0,
+  "lon_max": 42.0,
+  "points_count": 28,
+  "projection": "equirectangular",
+  "grid_step_deg": 0.5,
+  "artifact": "krai_grid.json"
+}

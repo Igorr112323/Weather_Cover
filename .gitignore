@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tests / tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Сборка PyInstaller
+AgroCast/build/
+AgroCast/dist/
+
+# Редакторы/ОС
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Временные состояния (~/.agrocast создаётся вне репозитория)
+agrocast.state/

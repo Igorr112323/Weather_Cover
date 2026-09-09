@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+
+jobs:
+  test:
+    name: API smoke tests (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: AgroCast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: AgroCast/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - name: Install API deps
+        run: pip install fastapi uvicorn pydantic python-multipart pytest httpx
+      - name: JS syntax
+        run: node --check static/desktop.js || true   # node есть на runner
+      - name: Python compile
+        run: python -m compileall -q agrocast app.py
+      - name: Run smoke tests
+        run: python -m pytest tests/ -v
+
+  build-exe:
+    name: Build AgroCast-2.5-exe.zip (Windows)
+    runs-on: windows-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: AgroCast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install requirements (incl. PySide6 + PyInstaller)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Build EXE + zip
+        run: python tools/build_exe.py
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgroCast-exe
+          path: AgroCast/dist/AgroCast/AgroCast.exe
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgroCast-2.5-exe.zip
+          path: AgroCast/dist/AgroCast-2.5-exe.zip

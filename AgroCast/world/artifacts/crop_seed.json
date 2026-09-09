@@ -1,0 +1,106 @@
+{
+ "crops": [
+  {
+   "id": "crop_krasnodar_194_mv",
+   "name": "Краснодарский 194 МВ",
+   "breeder": "НЦЗ им. П.П. Лукьяненко",
+   "fao": 200,
+   "sat": 2200,
+   "veg_days": 110,
+   "yield_t_ha": 7.2,
+   "frost_tolerable_c": -2.0,
+   "frost_lethal_c": -3.0,
+   "sow_from": "04-10",
+   "sow_to": "04-30",
+   "notes": "Раннеспелый гибрид, высокий стартовый рост, засухоустойчивый."
+  },
+  {
+   "id": "crop_krasnodar_291_amv",
+   "name": "Краснодарский 291 АМВ",
+   "breeder": "НЦЗ им. П.П. Лукьяненко",
+   "fao": 250,
+   "sat": 2350,
+   "veg_days": 116,
+   "yield_t_ha": 7.8,
+   "frost_tolerable_c": -2.0,
+   "frost_lethal_c": -3.0,
+   "sow_from": "04-10",
+   "sow_to": "04-25",
+   "notes": "Среднеранний, пластичный, стабилен по годам."
+  },
+  {
+   "id": "crop_krasnodar_382_mv",
+   "name": "Краснодарский 382 МВ",
+   "breeder": "НЦЗ им. П.П. Лукьяненко",
+   "fao": 320,
+   "sat": 2550,
+   "veg_days": 122,
+   "yield_t_ha": 8.4,
+   "frost_tolerable_c": -1.5,
+   "frost_lethal_c": -2.5,
+   "sow_from": "04-15",
+   "sow_to": "05-05",
+   "notes": "Классика Кубани, средняя группа спелости."
+  },
+  {
+   "id": "crop_ross_140_mv",
+   "name": "РОСС 140 МВ",
+   "breeder": "ООО «РосНиваАгро»",
+   "fao": 140,
+   "sat": 2100,
+   "veg_days": 104,
+   "yield_t_ha": 6.5,
+   "frost_tolerable_c": -2.0,
+   "frost_lethal_c": -3.0,
+   "sow_from": "04-05",
+   "sow_to": "04-25",
+   "notes": "Очень ранний, для северных районов края."
+  },
+  {
+   "id": "crop_ross_209_mv",
+   "name": "РОСС 209 МВ",
+   "breeder": "ООО «РосНиваАгро»",
+   "fao": 200,
+   "sat": 2250,
+   "veg_days": 111,
+   "yield_t_ha": 7.0,
+   "frost_tolerable_c": -1.5,
+   "frost_lethal_c": -2.5,
+   "sow_from": "04-10",
+   "sow_to": "04-30",
+   "notes": "Среднеранний, хорошая устойчивость к полеганию."
+  },
+  {
+   "id": "crop_lg_30550",
+   "name": "LG 30550",
+   "breeder": "Limagrain Europe",
+   "fao": 350,
+   "sat": 2650,
+   "veg_days": 126,
+   "yield_t_ha": 9.6,
+   "frost_tolerable_c": -1.0,
+   "frost_lethal_c": -2.0,
+   "sow_from": "04-15",
+   "sow_to": "05-05",
+   "notes": "Интенсивный, требователен к влаге и питанию."
+  },
+  {
+   "id": "crop_sy_fuego",
+   "name": "СИ Фуэго",
+   "breeder": "Syngenta Seeds",
+   "fao": 380,
+   "sat": 2700,
+   "veg_days": 129,
+   "yield_t_ha": 9.9,
+   "frost_tolerable_c": -1.0,
+   "frost_lethal_c": -2.0,
+   "sow_from": "04-15",
+   "sow_to": "05-10",
+   "notes": "Позднеспелый, высокий потенциал урожайности на орошении."
+  }
+ ],
+ "meta": {
+  "comment": "Стартовый справочник сортов кукурузы (мок). Хранится в ~/.agrocast/crops.db",
+  "encoding": "UTF-8"
+ }
+}

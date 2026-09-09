@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "app": "AgroCast",
+  "version": "2.5",
+  "role": "Каркас-оболочка без реальных расчётов (моки)",
+  "note": "integrity.json необязателен; читается в try/except при старте"
+}
