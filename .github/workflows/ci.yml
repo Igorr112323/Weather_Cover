@@ -71,12 +71,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v2.5.0 --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
-          gh release create v2.5.0 dist/AgroCast-2.5-exe.zip \
+          gh release delete v2.5.1 --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create v2.5.1 dist/AgroCast-2.5-exe.zip \
             --repo "$GITHUB_REPOSITORY" \
-            --title "AgroCast 2.5 — EXE (каркас-оболочка)" \
+            --title "AgroCast 2.5 — EXE (каркас-оболочка, сборка v2.5.1)" \
             --notes "Каркас EXE AgroCast 2.5: Яндекс.Карта + Leaflet fallback, 28 точек P01–P28, справочник сортов (SQLite ~/.agrocast/crops.db), мок-прогнозы. Распакуйте zip и запустите AgroCast.exe."
-          url="https://github.com/$GITHUB_REPOSITORY/releases/download/v2.5.0/AgroCast-2.5-exe.zip"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/v2.5.1/AgroCast-2.5-exe.zip"
           echo "::notice title=DOWNLOAD_URL::$url"
 
       - name: Collect build diagnostics

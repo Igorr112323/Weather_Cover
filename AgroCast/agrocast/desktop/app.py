@@ -34,8 +34,22 @@ os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Slot  # noqa: E402
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap  # noqa: E402
 from PySide6.QtWebChannel import QWebChannel  # noqa: E402
-from PySide6.QtWebEngineCore import QWebEngineDownloadRequest, QWebEngineProfile  # noqa: E402
-from PySide6.QtWebEngineWidgets import QWebEnginePage, QWebEngineView  # noqa: E402
+# Внимание (PySide6 >= 6.5): QWebEnginePage / QWebEngineProfile /
+# QWebEngineDownloadRequest живут в QtWebEngineCore, а QtWebEngineWidgets
+# оставляет только QWebEngineView. Ниже — импорт с fallback под старые версии.
+try:  # PySide6 >= 6.5 (современная раскладка)
+    from PySide6.QtWebEngineCore import (  # noqa: E402
+        QWebEngineDownloadRequest,
+        QWebEnginePage,
+        QWebEngineProfile,
+    )
+except ImportError:  # PySide6 <= 6.4: всё было в QtWebEngineWidgets
+    from PySide6.QtWebEngineWidgets import (  # noqa: E402
+        QWebEngineDownloadRequest,
+        QWebEnginePage,
+        QWebEngineProfile,
+    )
+from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication, QFileDialog, QFrame, QLabel, QMainWindow, QProgressBar, QVBoxLayout, QWidget,
 )
