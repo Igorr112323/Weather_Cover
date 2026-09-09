@@ -143,16 +143,41 @@ function bridgeSaveText(name, text) {
 
 /* ---------------------------------- сплеш -------------------------------- */
 function bootSplash() {
-  const el = $("#bootSplash"), fill = $("#bootFill");
+  const el = $("#bootSplash"), fill = $("#bootFill"), step = $("#bootStep");
+  if (!el) return;
+  const steps = [
+    "Стартуем AgroCast…",
+    "Читаем справочник сортов…",
+    "Готовим Яндекс.Карту…",
+    "Проверяем точки сетки…",
+  ];
+  let si = 0;
+  if (step) step.textContent = steps[0];
+  const stepTimer = setInterval(() => {
+    si = Math.min(si + 1, steps.length - 1);
+    if (step) step.textContent = steps[si];
+    if (si === steps.length - 1) clearInterval(stepTimer);
+  }, 340);
+
   const t0 = performance.now();
-  const tick = () => {
-    const p = Math.min(100, ((performance.now() - t0) / 650) * 100);
-    fill.style.width = p + "%";
-    if (p < 100) requestAnimationFrame(tick);
-    else setTimeout(() => { el.style.transition = "opacity .35s"; el.style.opacity = "0"; }, 150),
-      setTimeout(() => el.remove(), 600);
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearInterval(stepTimer);
+    if (step) step.textContent = "Всё готово ✓";
+    el.classList.add("splash-done");
+    setTimeout(() => el.remove(), 650);
   };
-  requestAnimationFrame(tick);
+  const grow = () => {
+    const p = Math.min(100, ((performance.now() - t0) / 1350) * 100);
+    if (fill) fill.style.width = p + "%";
+    if (p < 100) requestAnimationFrame(grow);
+    else finish();
+  };
+  requestAnimationFrame(grow);
+  // страховка: сплеш не должен «зависнуть» дольше 2.2 с
+  setTimeout(finish, 2200);
 }
 
 /* ---------------------------------- API ---------------------------------- */
@@ -192,7 +217,16 @@ function fillSelects() {
   if (!selP.value && state.grid.length) selP.value = state.grid[0].id;
 }
 function persistSelection() {
-  saveLS(LS_SEL, { point: $("#point").value || state.selected, crop: $("#crop").value });
+  saveLS(LS_SEL, {
+    point: $("#point").value || state.selected,
+    crop: $("#crop").value,
+    issue: $("#issue").value || currentMonth(),
+    horizon: $("#horizon").value || "3",
+  });
+}
+function syncSegHorizon() {
+  const v = $("#horizon").value;
+  $$("#segHorizon .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
 }
 
 /* ---------------------------------- карта -------------------------------- */
@@ -211,6 +245,10 @@ function setCoordChip(id) {
     info.textContent = prev && prev.id !== c.id
       ? `Выбрано: ${c.id} ${c.name} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)} (клик — ближайшая к указанному месту)`
       : `Выбрано: ${c.id} ${c.name} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}`;
+    info.classList.remove("flash");
+    void info.offsetWidth; // перезапуск CSS-анимации
+    info.classList.add("flash");
+    setTimeout(() => info.classList.remove("flash"), 900);
   }
 }
 
@@ -444,6 +482,12 @@ function cropSub(c) {
   if (c.breeder) parts.push(c.breeder);
   return parts.join(" · ");
 }
+function pickCrop(c) {
+  $("#crop").value = c.id;
+  persistSelection();
+  markActiveCrop();
+  toast(`В прогнозе: ${c.name}`, "ok");
+}
 function renderCrops() {
   const list = $("#cropsList");
   list.innerHTML = "";
@@ -457,18 +501,19 @@ function renderCrops() {
          <div class="crop-sub">${esc(cropSub(c))}</div>
        </div>
        <div class="crop-actions">
-         <button class="primary small" data-act="pick">Выбрать</button>
-         <button class="ghost small" data-act="edit" title="Изменить сорт">✎</button>
-         <button class="ghost small danger" data-act="del" title="Удалить сорт">✕</button>
+         <button class="btn primary sm" data-act="pick" title="Использовать в прогнозе">✓ В прогноз</button>
+         <button class="btn ghost sm" data-act="edit" title="Изменить сорт">✎</button>
+         <button class="btn ghost sm danger" data-act="del" title="Удалить сорт">✕</button>
        </div>`;
     row.dataset.id = c.id;
-    row.querySelector('[data-act="pick"]').onclick = () => { $("#crop").value = c.id; persistSelection(); markActiveCrop(); toast(`В прогнозе: ${c.name}`, "ok"); };
-    row.querySelector('[data-act="edit"]').onclick = () => openCropForm(c);
-    row.querySelector('[data-act="del"]').onclick = () => deleteCrop(c);
+    row.querySelector('[data-act="pick"]').onclick = (e) => { e.stopPropagation(); pickCrop(c); };
+    row.querySelector('[data-act="edit"]').onclick = (e) => { e.stopPropagation(); openCropForm(c); };
+    row.querySelector('[data-act="del"]').onclick = (e) => { e.stopPropagation(); deleteCrop(c); };
+    row.addEventListener("click", () => pickCrop(c));
     list.appendChild(row);
   });
   if (!state.crops.length) {
-    list.innerHTML = '<div class="empty-state">База сортов пуста — добавьте первый сорт кнопкой «+ Добавить / изменить сорт»</div>';
+    list.innerHTML = '<div class="empty-state">База сортов пуста — добавьте первый сорт кнопкой «＋ Добавить сорт»</div>';
   }
 }
 function markActiveCrop() {
@@ -491,7 +536,9 @@ function openCropForm(c = null) {
   $("#fSowFrom").value = c?.sow_from || "";
   $("#fSowTo").value = c?.sow_to || "";
   $("#fNotes").value = c?.notes || "";
-  $("#cropFormMsg").textContent = c ? `Редактирование: ${c.name}` : "Новый сорт";
+  const title = $("#cropFormTitle");
+  if (title) title.textContent = c ? `✎ Редактирование: ${c.name}` : "＋ Новый сорт";
+  $("#cropFormMsg").textContent = "";
   wrap.classList.remove("hidden");
   wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   $("#fName").focus();
@@ -501,6 +548,8 @@ function clearCropForm() {
     .forEach((id) => { $("#" + id).value = ""; });
   $("#fFrostTol").value = -2; $("#fFrostLeth").value = -3;
   $("#cropFormMsg").textContent = "";
+  const title = $("#cropFormTitle");
+  if (title) title.textContent = "＋ Новый сорт";
 }
 async function deleteCrop(c) {
   const ok = await uiConfirm(`Удалить сорт «${c.name}» из базы?`);
@@ -797,21 +846,36 @@ function renderReports() {
   }
   list.innerHTML = state.reports.map((r) => {
     const html = reportHtml(r);
+    const title = `${r.pointId} · ${monthLabel(r.issue)} · ${esc(r.cropName || "—")}`;
     return `<div class="report-wrap">
-      <div class="report-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:6px">
-        <button class="ghost small" data-p="${esc(r.rid)}" data-act="print-this">🖨 Печать</button>
+      <div class="report-actions">
+        <button class="btn ghost sm" data-p="${esc(r.rid)}" data-act="print-this" title="Печать в PDF">🖨 Печать PDF</button>
+        <button class="btn ghost sm" data-p="${esc(r.rid)}" data-act="json-this" title="Экспорт отчёта в JSON">⇩ JSON</button>
+        <button class="btn ghost sm danger" data-p="${esc(r.rid)}" data-act="del-report" title="Удалить из архива">✕</button>
+        <span class="report-date">${esc(r.createdAt)}</span>
       </div>
       ${html}
     </div>`;
   }).join("");
   $("#btnClearReports").classList.remove("hidden");
-  // делегирование печати конкретного отчёта
-  $$("#reportsList [data-act='print-this']").forEach((b) => {
+  // действия у каждого отчёта
+  $$("#reportsList [data-act]").forEach((b) => {
     b.onclick = () => {
       const r = state.reports.find((x) => x.rid === b.dataset.p);
-      if (r) printReport(r);
+      if (!r) return;
+      if (b.dataset.act === "print-this") printReport(r);
+      else if (b.dataset.act === "json-this") exportReportJson(r);
+      else if (b.dataset.act === "del-report") deleteReport(r);
     };
   });
+}
+async function deleteReport(r) {
+  const ok = await uiConfirm(`Удалить отчёт «${r.pointId} · ${monthLabel(r.issue)}${r.cropName ? " · " + r.cropName : ""}» из архива?`);
+  if (!ok) return;
+  state.reports = state.reports.filter((x) => x.rid !== r.rid);
+  saveLS(LS_REPORTS, state.reports);
+  renderReports();
+  toast("Отчёт удалён");
 }
 function addReport(report) {
   state.reports.unshift(report);
@@ -876,7 +940,8 @@ async function runForecast() {
   btnCancel.classList.remove("hidden");
   statusEl.classList.remove("hidden", "ok", "err");
   statusEl.classList.add("busy");
-  logEl.classList.remove("hidden");
+  const logRow = $("#logRow");
+  if (logRow) logRow.classList.remove("hidden");
   logEl.textContent = "";
   const timer = startElapsed(statusEl);
 
@@ -919,6 +984,11 @@ async function runForecast() {
     statusEl.classList.remove("busy");
     statusEl.classList.add("ok");
     statusEl.textContent = `✓ Готово за ${elapsed.toFixed(1)} с — отчёт добавлен в архив`;
+    // журнал можно свернуть автоматически через несколько секунд
+    setTimeout(() => {
+      const lr = $("#logRow");
+      if (lr && !state.running) lr.classList.add("hidden");
+    }, 7000);
 
     const report = buildReport(resp.payload, cropSnap, elapsed);
     addReport(report);
@@ -944,11 +1014,24 @@ async function runForecast() {
 }
 
 /* ---------------------------------- вкладки ------------------------------ */
+const PANE_IDS = ["tab-crops", "tab-data", "tab-reports"];
+function activeTabName() {
+  const b = document.querySelector(".tabs .tab.active");
+  return b ? b.dataset.tab : "tab-crops";
+}
+function moveTabThumb(name) {
+  const thumb = $("#tabThumb"), btn = $(`.tabs .tab[data-tab="${name}"]`);
+  if (!thumb || !btn) return;
+  thumb.style.width = btn.offsetWidth + "px";
+  thumb.style.left = btn.offsetLeft + "px";
+}
 function switchTab(name) {
-  $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  ["tab-forecast", "tab-data", "tab-reports"].forEach((id) => {
-    $("#" + id).classList.toggle("hidden", id !== name);
+  $$(".tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  PANE_IDS.forEach((id) => {
+    const p = $("#" + id);
+    if (p) p.classList.toggle("active", id === name);
   });
+  moveTabThumb(name);
 }
 
 /* ---------------------------------- экспорт ------------------------------ */
@@ -962,11 +1045,9 @@ function snapshotJSON() {
   rep.note = "AgroCast 2.5 каркас: данные моковые, расчёты не выполнялись";
   return JSON.stringify(rep, null, 2);
 }
-async function exportJson() {
-  const text = snapshotJSON();
-  const fname = `AgroCast-2.5-${currentReport()?.rid || "archive"}.json`;
+async function downloadText(text, fname) {
   const path = await bridgeSaveText(fname, text);
-  if (path) { toast(`JSON сохранён: ${path}`, "ok"); return; }
+  if (path) { toast(`Сохранено: ${path}`, "ok"); return; }
   // браузерный путь: blob + download
   const blob = new Blob([text], { type: "application/json" });
   const a = document.createElement("a");
@@ -976,6 +1057,20 @@ async function exportJson() {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 400);
   toast("JSON сформирован — сохранён в «Загрузки»", "ok");
+}
+async function exportJson() {
+  const text = snapshotJSON();
+  const fname = `AgroCast-2.5-${currentReport()?.rid || "archive"}.json`;
+  await downloadText(text, fname);
+}
+async function exportReportJson(r) {
+  const rep = {
+    type: "report", app: "AgroCast", version: VERSION,
+    ...JSON.parse(JSON.stringify(r)),
+    exportedAt: nowRu(),
+    note: "AgroCast 2.5 каркас: данные моковые, расчёты не выполнялись",
+  };
+  await downloadText(JSON.stringify(rep, null, 2), `AgroCast-2.5-${r.rid}.json`);
 }
 function printReport(r) {
   let root = $("#printRoot");
@@ -991,7 +1086,12 @@ function printReport(r) {
 
 /* ---------------------------------- init --------------------------------- */
 function bindEvents() {
-  $$(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  $$(".tabs .tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  $$("#segHorizon .seg-btn").forEach((b) => b.addEventListener("click", () => {
+    $("#horizon").value = b.dataset.v;
+    syncSegHorizon();
+    persistSelection();
+  }));
   $("#btnForecast").addEventListener("click", runForecast);
   $("#btnPrint").addEventListener("click", () => {
     const r = currentReport();
@@ -1002,17 +1102,22 @@ function bindEvents() {
   $("#point").addEventListener("change", (e) => {
     selectPoint(e.target.value, { pan: true });
   });
-  $("#horizon").addEventListener("change", () => {});
   $("#crop").addEventListener("change", () => { persistSelection(); markActiveCrop(); });
   $("#issue").addEventListener("change", () => persistSelection());
+  $("#btnLogClose").addEventListener("click", () => {
+    const lr = $("#logRow");
+    if (lr) lr.classList.add("hidden");
+  });
   $("#btnCropAdd").addEventListener("click", () => {
     const wrap = $("#cropFormWrap");
     if (wrap.classList.contains("hidden")) {
-      if (!state.crops.length || confirmClearNeeded()) clearCropForm();
+      if (state.crops.length && !confirmClearNeeded()) { /* не затираем непустую форму */ }
+      clearCropForm();
       openCropForm(null);
     } else wrap.classList.add("hidden");
   });
   $("#btnCropClear").addEventListener("click", clearCropForm);
+  $("#btnCropCancel").addEventListener("click", () => $("#cropFormWrap").classList.add("hidden"));
   $("#cropForm").addEventListener("submit", saveCrop);
   $("#btnClearReports").addEventListener("click", async () => {
     const ok = await uiConfirm("Очистить архив отчётов? Это действие необратимо.");
@@ -1024,6 +1129,7 @@ function bindEvents() {
   });
   window.addEventListener("resize", () => {
     if (state.leafletMap) setTimeout(() => state.leafletMap.invalidateSize(), 120);
+    setTimeout(() => moveTabThumb(activeTabName()), 160);
   });
 }
 function confirmClearNeeded() {
@@ -1044,6 +1150,13 @@ async function init() {
   setupBridge();
   bindEvents();
   setIssueLimits();
+  // восстановить горизонт из сохранённых настроек и синхронизировать сегменты
+  const saved0 = loadLS(LS_SEL, {});
+  if (saved0.horizon && ["1", "3", "6"].includes(String(saved0.horizon))) {
+    $("#horizon").value = String(saved0.horizon);
+  }
+  syncSegHorizon();
+  moveTabThumb("tab-crops");
 
   // загрузка мира: сетка + сорта (параллельно)
   const [gridData, cropsData] = await Promise.allSettled([
@@ -1079,6 +1192,9 @@ async function init() {
   } else if (state.grid.length) {
     selectPoint(state.grid[0].id, { pan: false });
   }
+
+  // плавающий индикатор вкладок — после того как раскладка устоялась
+  requestAnimationFrame(() => requestAnimationFrame(() => moveTabThumb(activeTabName())));
 
   initMap();
 }

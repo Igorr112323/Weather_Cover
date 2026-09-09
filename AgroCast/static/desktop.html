@@ -18,12 +18,25 @@
   <script type="module" src="/assets/desktop.js"></script>
 </head>
 <body>
-  <!-- лёгкий css-сплеш в браузере (в exe поверх идёт нативный splash) -->
-  <div id="bootSplash">
-    <div class="boot-card">
-      <img src="/assets/agrocast.png" alt="AgroCast" class="boot-logo" />
-      <div class="boot-title">AgroCast 2.5 · Яндекс.Карта</div>
-      <div class="boot-bar"><div class="boot-fill" id="bootFill"></div></div>
+  <!-- ================================================================
+       SPLASH: вау-анимация загрузки (градиент, аврора, кольцо-прогресс)
+       ================================================================ -->
+  <div id="bootSplash" role="status" aria-live="polite">
+    <div class="aurora a1"></div>
+    <div class="aurora a2"></div>
+    <div class="aurora a3"></div>
+    <div class="splash-inner">
+      <div class="splash-logo-wrap">
+        <svg class="splash-ring" viewBox="0 0 140 140" aria-hidden="true">
+          <circle class="ring-bg" cx="70" cy="70" r="62" />
+          <circle class="ring-fg" cx="70" cy="70" r="62" />
+        </svg>
+        <img id="bootLogo" src="/assets/agrocast.png" alt="AgroCast" class="splash-logo" />
+      </div>
+      <h1 class="splash-title">AgroCast&nbsp;<span>2.5</span></h1>
+      <div id="bootStep" class="splash-step">Стартуем…</div>
+      <div class="splash-bar"><i id="bootFill"></i></div>
+      <p class="splash-sub">локальные прогнозы · Краснодарский край · 28 точек</p>
     </div>
   </div>
 
@@ -31,141 +44,208 @@
     <!-- ============================= ШАПКА ============================= -->
     <header class="topbar">
       <div class="brand">
-        <img src="/assets/agrocast.png" alt="лого AgroCast" class="logo" />
+        <div class="logo-ring">
+          <img src="/assets/agrocast.png" alt="лого AgroCast" class="logo" />
+        </div>
         <div class="brand-text">
-          <h1>AgroCast <span class="ver">[2.5]</span></h1>
+          <h1>AgroCast <span class="ver">2.5</span></h1>
           <p class="tagline">локальные прогнозы · Краснодарский край · 28 точек P01–P28 · Яндекс.Карта · версия 2.5</p>
         </div>
       </div>
+
       <div class="top-actions">
-        <span class="badge ok" id="netBadge" title="Внешние сервисы: Яндекс.Карта">✓ интернет есть · Яндекс.Карта</span>
-        <button id="btnPrint" class="ghost" title="Печать активного отчёта в PDF">🖨 Печать отчета</button>
-        <button id="btnJson" class="ghost" title="Выгрузить отчёт/состояние в JSON">JSON</button>
+        <span class="badge ok" id="netBadge" title="Внешние сервисы: Яндекс.Карта">
+          <span class="dot"></span> интернет есть · Яндекс.Карта
+        </span>
+        <span class="sep"></span>
+        <button id="btnPrint" class="btn ghost" title="Печать активного отчёта в PDF">
+          <span class="bi">🖨</span><span class="bl">Печать</span>
+        </button>
+        <button id="btnJson" class="btn ghost" title="Экспорт отчёта / архива в JSON">
+          <span class="bi">⇩</span><span class="bl">JSON</span>
+        </button>
       </div>
     </header>
 
     <main id="columns">
       <!-- ========================= КАРТА (левая колонка) ================= -->
       <section class="map-col card">
+        <div class="map-head">
+          <div class="mh-text">
+            <h2>Карта точек</h2>
+            <p>Кликните по карте — выберется ближайшая точка сетки</p>
+          </div>
+          <div class="mh-right">
+            <span class="tag">P01–P28 · Краснодарский край</span>
+          </div>
+        </div>
+
         <div id="map">
+          <div class="map-empty" id="mapEmpty">Загружаем карту…</div>
           <div class="map-chips">
             <span class="chip" id="mapMode" title="Режим карты">Яндекс.Карта</span>
             <span class="chip coords" id="coordChip" title="Выбранная точка">P– · —</span>
           </div>
-          <div class="map-empty" id="mapEmpty">Загрузка карты…</div>
         </div>
-        <div class="map-footer">Яндекс.Карта + 28 точек — карта работает</div>
+
+        <div class="map-footer">
+          <div class="legend-dots">
+            <span class="ld"><i class="sw-dot green"></i>точка</span>
+            <span class="ld"><i class="sw-dot yellow"></i>наведение</span>
+            <span class="ld"><i class="sw-dot red"></i>выбрана</span>
+          </div>
+          <span class="mf-status">Яндекс.Карта + 28 точек — карта работает</span>
+        </div>
       </section>
 
-      <!-- ======================= ПРАВАЯ КОЛОНКА: ВКЛАДКИ ================= -->
-      <section class="content-col">
-        <nav class="tabs" role="tablist">
-          <button class="tab active" data-tab="tab-forecast" role="tab">🌽 Прогнозы</button>
-          <button class="tab hidden" id="tabBtnData" data-tab="tab-data" role="tab">📦 Скачанные данные</button>
-          <button class="tab" data-tab="tab-reports" role="tab">🗂 Отчеты <span class="count" id="reportsCount">0</span></button>
-        </nav>
+      <!-- ========================= ПРАВАЯ КОЛОНКА ========================= -->
+      <section class="side-col">
 
-        <!-- ---------------- Вкладка: Прогнозы ---------------- -->
-        <div id="tab-forecast" class="tab-panel">
-          <p class="hint">ⓘ 2004–2024 — проверка на истории, далее — прогноз на будущее</p>
+        <!-- Панель «Новый прогноз» всегда под рукой -->
+        <div class="panel forecast-panel" id="forecastPanel">
+          <div class="panel-head">
+            <div class="ph-left">
+              <h2>🌦 Новый прогноз</h2>
+              <p>выпуск за месяц → расчёт на горизонт</p>
+            </div>
+            <span class="pill-hint">история 2004–2024 · далее прогноз</span>
+          </div>
 
           <div class="grid2">
             <label class="field">
-              <span>Месяц выпуска</span>
-              <input type="month" id="issue" />
+              <span class="f-label">Месяц выпуска</span>
+              <input type="month" id="issue" class="input" />
             </label>
-            <label class="field">
-              <span>Интервал</span>
-              <select id="horizon">
+            <div class="field">
+              <span class="f-label">Горизонт</span>
+              <div class="seg" id="segHorizon">
+                <button type="button" class="seg-btn" data-v="1">1 мес</button>
+                <button type="button" class="seg-btn active" data-v="3">3 мес</button>
+                <button type="button" class="seg-btn" data-v="6">6 мес</button>
+              </div>
+              <select id="horizon" class="hidden">
                 <option value="1">1 месяц</option>
                 <option value="3" selected>3 месяца</option>
                 <option value="6">6 месяцев</option>
               </select>
-            </label>
+            </div>
           </div>
 
           <div class="grid2">
             <label class="field">
-              <span>Точка сетки</span>
-              <select id="point"></select>
+              <span class="f-label">Точка сетки</span>
+              <select id="point" class="input select-arrow"></select>
             </label>
             <label class="field">
-              <span>Сорт кукурузы</span>
-              <select id="crop"><option value="">— выберите сорт —</option></select>
+              <span class="f-label">Сорт кукурузы</span>
+              <select id="crop" class="input select-arrow"><option value="">— выберите сорт —</option></select>
             </label>
           </div>
 
-          <div class="sel-line" id="selInfo">Выбрано: кликните по карте, чтобы указать точку</div>
+          <div class="sel-strip" id="selInfo">Кликните по карте, чтобы выбрать точку</div>
 
           <div class="run-row">
-            <button id="btnForecast" class="primary">▶ Показать прогноз</button>
-            <button id="btnCancel" class="danger hidden">✕ Отменить</button>
+            <button id="btnForecast" class="btn primary big">
+              <span class="bi">▶</span><span class="bl">Показать прогноз</span>
+            </button>
+            <button id="btnCancel" class="btn cancel hidden">✕ Отменить</button>
           </div>
-          <div id="status" class="status hidden"></div>
-          <pre id="log" class="log hidden"></pre>
 
-          <!-- Справочник кукурузы -->
-          <div class="card inner" id="cropsPanel">
-            <div class="crops-head">
-              <div>
-                <h3>🌽 Справочник кукурузы</h3>
-                <p class="hint">База в ~/.agrocast/crops.db</p>
-              </div>
-              <button id="btnCropAdd" class="ghost small">+ Добавить / изменить сорт</button>
+          <div id="status" class="status hidden"></div>
+          <div id="logRow" class="log-row hidden">
+            <div class="log-head">
+              <span>журнал расчёта</span>
+              <button id="btnLogClose" class="link-btn" type="button">скрыть ✕</button>
             </div>
+            <pre id="log" class="log"></pre>
+          </div>
+        </div>
+
+        <!-- Табы-пилюли с плавающим индикатором -->
+        <nav class="tabs" id="tabs" role="tablist">
+          <span class="tab-thumb" id="tabThumb"></span>
+          <button class="tab active" data-tab="tab-crops" role="tab">🌽 Сорта</button>
+          <button class="tab hidden" id="tabBtnData" data-tab="tab-data" role="tab">📦 Данные</button>
+          <button class="tab" data-tab="tab-reports" role="tab">🗂 Отчёты <span class="count" id="reportsCount">0</span></button>
+        </nav>
+
+        <div class="panes">
+          <!-- Сорта -->
+          <div id="tab-crops" class="tab-pane active">
+            <div class="toolbar">
+              <div class="tb-text">
+                <h3>Справочник кукурузы</h3>
+                <p class="hint">база ~/.agrocast/crops.db · клик по строке — выбрать сорт</p>
+              </div>
+              <button id="btnCropAdd" class="btn ghost sm">＋ Добавить сорт</button>
+            </div>
+
             <div id="cropsList" class="crops-list"></div>
 
-            <div id="cropFormWrap" class="hidden">
+            <div id="cropFormWrap" class="crop-form hidden">
+              <div class="cf-head">
+                <h4 id="cropFormTitle">Новый сорт</h4>
+                <span id="cropFormMsg" class="form-msg"></span>
+              </div>
               <form id="cropForm" novalidate>
                 <input type="hidden" id="cropId" />
                 <div class="grid2">
-                  <label class="field wide2"><span>Название * <em>(до 120 симв.)</em></span>
-                    <input id="fName" maxlength="120" required placeholder="Например: Краснодарский 194 МВ" /></label>
+                  <label class="field wide2"><span class="f-label">Название * <em>(до 120 симв.)</em></span>
+                    <input id="fName" class="input" maxlength="120" required placeholder="Например: Краснодарский 194 МВ" /></label>
                 </div>
                 <div class="grid2">
-                  <label class="field"><span>Селекционер</span><input id="fBreeder" maxlength="120" /></label>
-                  <label class="field"><span>ФАО (50–650)</span><input id="fFao" type="number" min="50" max="650" step="1" /></label>
+                  <label class="field"><span class="f-label">Селекционер</span><input id="fBreeder" class="input" maxlength="120" /></label>
+                  <label class="field"><span class="f-label">ФАО (50–650)</span><input id="fFao" class="input" type="number" min="50" max="650" step="1" /></label>
                 </div>
                 <div class="grid2">
-                  <label class="field"><span>САТ, ° (1500–3500)</span><input id="fSat" type="number" min="1500" max="3500" step="10" /></label>
-                  <label class="field"><span>Вегетация, дн (60–200)</span><input id="fVeg" type="number" min="60" max="200" step="1" /></label>
+                  <label class="field"><span class="f-label">САТ, ° (1500–3500)</span><input id="fSat" class="input" type="number" min="1500" max="3500" step="10" /></label>
+                  <label class="field"><span class="f-label">Вегетация, дн (60–200)</span><input id="fVeg" class="input" type="number" min="60" max="200" step="1" /></label>
                 </div>
                 <div class="grid2">
-                  <label class="field"><span>Урожай, т/га (0.1–30)</span><input id="fYield" type="number" min="0.1" max="30" step="0.1" /></label>
-                  <label class="field"><span>Мороз переносимый, °C (−8..0)</span><input id="fFrostTol" type="number" min="-8" max="0" step="0.5" value="-2" /></label>
+                  <label class="field"><span class="f-label">Урожай, т/га (0.1–30)</span><input id="fYield" class="input" type="number" min="0.1" max="30" step="0.1" /></label>
+                  <label class="field"><span class="f-label">Мороз переносимый, °C (−8..0)</span><input id="fFrostTol" class="input" type="number" min="-8" max="0" step="0.5" value="-2" /></label>
                 </div>
                 <div class="grid2">
-                  <label class="field"><span>Гибель, °C (−8..0)</span><input id="fFrostLeth" type="number" min="-8" max="0" step="0.5" value="-3" /></label>
-                  <label class="field"><span>Сев с (ММ-ДД)</span><input id="fSowFrom" maxlength="5" placeholder="04-10" /></label>
+                  <label class="field"><span class="f-label">Гибель, °C (−8..0)</span><input id="fFrostLeth" class="input" type="number" min="-8" max="0" step="0.5" value="-3" /></label>
+                  <label class="field"><span class="f-label">Сев с (ММ-ДД)</span><input id="fSowFrom" class="input" maxlength="5" placeholder="04-10" /></label>
                 </div>
                 <div class="grid2">
-                  <label class="field"><span>Сев по (ММ-ДД)</span><input id="fSowTo" maxlength="5" placeholder="04-30" /></label>
-                  <label class="field"><span>—</span><input class="disabled" disabled value="" /></label>
+                  <label class="field"><span class="f-label">Сев по (ММ-ДД)</span><input id="fSowTo" class="input" maxlength="5" placeholder="04-30" /></label>
+                  <label class="field"><span class="f-label">Заметки</span><textarea id="fNotes" class="input" rows="2" maxlength="2000"></textarea></label>
                 </div>
-                <label class="field"><span>Заметки</span><textarea id="fNotes" rows="2" maxlength="2000"></textarea></label>
                 <div class="form-actions">
-                  <button type="submit" class="primary small">💾 Сохранить</button>
-                  <button type="button" id="btnCropClear" class="ghost small">Очистить</button>
-                  <span id="cropFormMsg" class="form-msg"></span>
+                  <button type="submit" class="btn primary sm">💾 Сохранить</button>
+                  <button type="button" id="btnCropClear" class="btn ghost sm">Очистить</button>
+                  <button type="button" id="btnCropCancel" class="btn ghost sm">Закрыть</button>
                 </div>
               </form>
             </div>
           </div>
-        </div>
 
-        <!-- ---------------- Вкладка: Скачанные данные ---------------- -->
-        <div id="tab-data" class="tab-panel hidden">
-          <p class="hint">ⓘ Данные, которые «скачал» каркас (мок). Хранятся локально.</p>
-          <div id="downloadList" class="cards-col"></div>
-        </div>
-
-        <!-- ---------------- Вкладка: Отчеты (архив) ---------------- -->
-        <div id="tab-reports" class="tab-panel hidden">
-          <div class="reports-toolbar">
-            <p class="hint">ⓘ Все отчёты, когда-либо сделанные в этой установке (localStorage).</p>
-            <button id="btnClearReports" class="ghost small hidden">Очистить архив</button>
+          <!-- Скачанные данные -->
+          <div id="tab-data" class="tab-pane">
+            <div class="toolbar">
+              <div class="tb-text">
+                <h3>Скачанные данные</h3>
+                <p class="hint">появляются после первого прогноза · хранятся локально</p>
+              </div>
+            </div>
+            <div id="downloadList" class="cards-col"></div>
           </div>
-          <div id="reportsList" class="cards-col"></div>
+
+          <!-- Отчёты -->
+          <div id="tab-reports" class="tab-pane">
+            <div class="toolbar">
+              <div class="tb-text">
+                <h3>Архив отчётов</h3>
+                <p class="hint">все прогнозы этой установки · печать PDF / экспорт JSON</p>
+              </div>
+              <div class="tb-btns">
+                <button id="btnClearReports" class="btn ghost sm hidden" title="Очистить архив">Очистить</button>
+              </div>
+            </div>
+            <div id="reportsList" class="cards-col"></div>
+          </div>
         </div>
       </section>
     </main>
@@ -174,13 +254,13 @@
   <!-- toasts -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- подтверждение (вместо нативного confirm, который QtWebEngine прячет) -->
+  <!-- подтверждение -->
   <div id="confirmModal" class="modal-mask hidden">
     <div class="modal">
       <p id="confirmText">?</p>
       <div class="modal-actions">
-        <button id="confirmOk" class="primary small">Да</button>
-        <button id="confirmNo" class="ghost small">Нет</button>
+        <button id="confirmOk" class="btn primary sm">Да</button>
+        <button id="confirmNo" class="btn ghost sm">Нет</button>
       </div>
     </div>
   </div>
