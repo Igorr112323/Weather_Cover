@@ -102,6 +102,18 @@ def _find_dir(name: str) -> Path | None:
     return _candidate_roots()[0] / name
 
 
+def _log(msg: str) -> None:
+    """Печать + запись в ~/.agrocast/agrocast.log (для диагностики запуска)."""
+    print(f"[agrocast] {msg}", flush=True)
+    try:
+        from .errors import log_path
+
+        with log_path().open("a", encoding="utf-8") as f:
+            f.write(f"{msg}\n")
+    except Exception:
+        pass
+
+
 def load_integrity(world_dir: Path | None) -> dict:
     """try/except для integrity.json — файл необязателен в каркасе."""
     data: dict = {"present": False, "ok": False}
@@ -338,7 +350,6 @@ def main(argv: list[str] | None = None) -> int:
     world_dir = Path(os.environ["AGROCAST_WORLD_DIR"]) if os.environ.get("AGROCAST_WORLD_DIR") else _find_dir("world")
     migr_dir = Path(os.environ["AGROCAST_MIGRATIONS_DIR"]) if os.environ.get("AGROCAST_MIGRATIONS_DIR") else _find_dir("migrations")
     integrity = load_integrity(world_dir)
-    _log = lambda msg: print(f"[agrocast] {msg}", flush=True)  # noqa: E731
     _log(f"static: {static_dir}")
     _log(f"world:  {world_dir}")
     _log(f"migrations: {migr_dir}")
