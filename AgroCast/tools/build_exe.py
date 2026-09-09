@@ -39,37 +39,41 @@ def log(msg: str = "") -> None:
             pass
 
 
-def run(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> int:
+def run(cmd: list[str], cwd: Path = ROOT, check: bool = True, timeout: int = 900) -> int:
     log(">>> " + " ".join(cmd))
-    proc = subprocess.Popen(
-        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        errors="replace",
-    )
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        log(line.rstrip("\n"))
-    proc.wait()
-    if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd)
-    return proc.returncode or 0
+    # stdout пишем напрямую в файл-лог (без pipe — пайп может «зависнуть»,
+    # если внучатый процесс унаследовал дескриптор)
+    with LOG.open("ab") as logf:
+        proc = subprocess.Popen(
+            cmd, cwd=str(cwd), stdout=logf, stderr=subprocess.STDOUT,
+        )
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            log(f"TIMEOUT {timeout}s — убиваю процесс")
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            proc.wait(timeout=30)
+            rc = -1
+    log("")
+    if check and rc != 0:
+        raise subprocess.CalledProcessError(rc, cmd)
+    return rc or 0
 
 
 def emit_error(title: str) -> None:
-    """Печатает аннотации GitHub Actions: хвост лога (видно через API)."""
-    tail_lines = []
+    """Печатает аннотацию GitHub Actions с КОНЦОМ лога (видно через API)."""
+    body = title
     try:
         if LOG.is_file():
-            tail_lines = LOG.read_text(encoding="utf-8").splitlines()
+            text = LOG.read_text(encoding="utf-8", errors="replace")
+            body = text[-3800:] or title
     except Exception:
         pass
-    body = "\n".join(tail_lines) or title
     enc = body.replace("\r", "").replace("%", "%25").replace("\n", "%0A")
-
-    def ann(t: str, b: str) -> None:
-        print(f"::error title={t}::{b}", flush=True)
-
-    ann(f"{title} (tail 9000)", enc[-9000:])
-    ann(f"{title} (LAST 1200)", enc[-1200:])
+    print(f"::error title={title}::{enc}", flush=True)
 
 
 def build_pyinstaller() -> None:

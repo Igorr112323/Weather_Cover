@@ -87,8 +87,10 @@ jobs:
           from pathlib import Path
           p = Path("dist/build_exe.log")
           if p.exists():
-              body = p.read_text(encoding="utf-8").replace("%", "%25").replace("\r", "")
-              print("::error title=AgroCast build log::" + body.replace("\n", "%0A")[-7000:])
+              text = p.read_text(encoding="utf-8", errors="replace")
+              body = text[-3800:] or "log пуст"
+              enc = body.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print("::error title=AgroCast build log (END)::" + enc)
           else:
               print("::error title=no log::dist/build_exe.log отсутствует")
           PY
