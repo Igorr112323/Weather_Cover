@@ -2,6 +2,12 @@
 
 Современное перерисованное приложение погоды: быстрый интерфейс, плавные анимации, почасовой прогноз, карта и офлайн-режим.
 
+## Скачать для Windows (EXE)
+
+**Прямая ссылка:** [WeatherCover-win32-x64.zip](https://github.com/Igorr112323/Weather_Cover/releases/download/v1.0.0-weather-cover/WeatherCover-win32-x64.zip)
+
+Внутри архива находится папка `WeatherCover-win32-x64` с файлом **`WeatherCover.exe`** — запустите его без установки.
+
 ## Что внутри
 
 - **Живой почасовой прогноз**: график температуры + 24 часа с иконками и вероятностью осадков.
@@ -27,11 +33,6 @@ npm run dev
 npm run build
 ```
 
-## Версия для Windows (EXE)
+## Сборка Windows (в CI)
 
-Windows-сборка собирается в GitHub Actions. После завершения сборки EXE доступен из артефакта:
-
-- Ветка: `arena/01a0852e-weather-cover`
-- Откройте вкладку **Actions** в репозитории и скачайте артефакт `WeatherCover-win32-x64`.
-
-Внутри архива лежит папка `WeatherCover-win32-x64` с файлом **`WeatherCover.exe`**.
+Windows-сборка собирается в GitHub Actions. После завершения сборки EXE публикуется в Releases и как артефакт Actions.
