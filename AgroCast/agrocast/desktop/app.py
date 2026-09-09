@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 
 from ..crops.db import CropDB  # noqa: E402
 from ..serve.product import create_app  # noqa: E402
+from .errors import log_path  # noqa: E402  (stdlib-only, безопасен при сбоях Qt)
 
 APP_NAME = "AgroCast"
 APP_VERSION = "2.5"
@@ -308,13 +309,55 @@ class MainWindow(QMainWindow):
 
 
 # ---------------------------------------------------------------------- сервер
+def _find_free_port(preferred: int = DEFAULT_PORT, tries: int = 12) -> int:
+    """Ищет свободный порт на 127.0.0.1, начиная с preferred.
+
+    Если порт занят (например, остатком прошлой копии приложения) —
+    берём следующий. Так приложение запустится даже после «подвисшего» процесса.
+    """
+    import socket
+
+    for delta in range(tries):
+        port = preferred + delta
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("127.0.0.1", port))
+            return port
+        except OSError:
+            continue
+        finally:
+            s.close()
+    raise RuntimeError(f"Нет свободного порта рядом с {preferred}")
+
+
+def _route_uvicorn_log() -> None:
+    """Дублирует логи uvicorn (ошибки старта сервера) в ~/.agrocast/agrocast.log."""
+    import logging
+
+    try:
+        from .errors import log_path
+
+        handler = logging.FileHandler(str(log_path()), encoding="utf-8")
+        handler.setFormatter(logging.Formatter("UVICORN %(levelname)s: %(message)s"))
+        for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+            lg = logging.getLogger(name)
+            lg.addHandler(handler)
+            lg.propagate = False
+        lg_err = logging.getLogger("uvicorn.error")
+        lg_err.addHandler(handler)
+    except Exception:
+        pass
+
+
 def start_server(static_dir: Path, world_dir: Path, port: int = DEFAULT_PORT,
                  pump=None) -> tuple:
     """Запускает FastAPI (uvicorn) в потоке; возвращает (url, app, thread)."""
+    _route_uvicorn_log()
     app = create_app(static_dir=static_dir, world_dir=world_dir, desktop=True)
 
     import uvicorn
 
+    port = _find_free_port(port)  # занятый порт больше не роняет запуск
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True, name="agrocast-api")
@@ -326,6 +369,11 @@ def start_server(static_dir: Path, world_dir: Path, port: int = DEFAULT_PORT,
 
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
+        if not thread.is_alive():
+            raise RuntimeError(
+                "uvicorn-поток завершился при старте. "
+                f"Подробности — в логе {log_path()}"
+            )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.3):
                 return url, app, thread
@@ -333,7 +381,9 @@ def start_server(static_dir: Path, world_dir: Path, port: int = DEFAULT_PORT,
             if pump:
                 pump()
             time.sleep(0.1)
-    raise RuntimeError(f"API-сервер не поднялся на порту {port}")
+    raise RuntimeError(
+        f"API-сервер не поднялся на порту {port}. Лог: {log_path()}"
+    )
 
 
 # ------------------------------------------------------------------------- main
@@ -382,10 +432,24 @@ def main(argv: list[str] | None = None) -> int:
         url, api_app, api_thread = start_server(static_dir, world_dir, pump=_pump)
     except Exception as exc:  # noqa: BLE001
         splash.close()
-        _log(f"FATAL: {exc}")
+        import traceback
+
+        tb = traceback.format_exc(limit=6)
+        _log("FATAL: " + tb)
+        try:
+            from .errors import _append as _err_append
+
+            _err_append(tb)
+        except Exception:
+            pass
         from PySide6.QtWidgets import QMessageBox
 
-        QMessageBox.critical(None, f"{APP_NAME} {APP_VERSION}", f"Не удалось запустить локальный сервер:\n{exc}")
+        QMessageBox.critical(
+            None,
+            f"{APP_NAME} {APP_VERSION}",
+            f"Не удалось запустить локальный сервер:\n{exc}\n\n"
+            f"Подробности сохранены в файл:\n{log_path()}",
+        )
         return 2
 
     # --- окно -------------------------------------------------------------

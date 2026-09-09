@@ -30,20 +30,47 @@ def _num(value):
 
 class CropDB:
     def __init__(self, state_dir: str | Path | None = None, seed_dir: str | Path | None = None):
-        self.state_dir = Path(state_dir or (Path.home() / ".agrocast"))
-        self.db_path = self.state_dir / _DB_NAME
         self.seed_dir = Path(seed_dir) if seed_dir else None
-        self.state_dir.mkdir(parents=True, exist_ok=True)
-        # API (FastAPI) ходит в БД из потоков threadpool — разрешаем кросс-поток,
-        # а доступ сериализуем локом
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
+        preferred = Path(state_dir or (Path.home() / ".agrocast"))
+        self.state_dir, self.db_path, self._conn = self._open(preferred)
         self._ensure_schema()
         if self._is_empty():
             self.seed_from_file()
+
+    def _open(self, state_dir: Path):
+        """Открывает БД. Если целевой каталог недоступен (заблокирован,
+        путь не пишется и т.п.) — откатывается во временный каталог,
+        чтобы приложение гарантированно запустилось."""
+        import tempfile
+
+        candidates = []
+        try:
+            state_dir.mkdir(parents=True, exist_ok=True)
+            candidates.append(state_dir / _DB_NAME)
+        except Exception:
+            pass
+        # проверка: каталог реально пишется?
+        if state_dir.is_dir():
+            probe = state_dir / ".write_probe"
+            try:
+                probe.write_text("ok", encoding="utf-8")
+                probe.unlink(missing_ok=True)
+                candidates.append(state_dir / _DB_NAME)
+            except Exception:
+                pass
+        candidates.append(Path(tempfile.mkdtemp(prefix="agrocast_state_")) / _DB_NAME)
+        # API (FastAPI) ходит в БД из потоков threadpool — разрешаем кросс-поток
+        for db_path in dict.fromkeys(candidates):
+            try:
+                conn = sqlite3.connect(str(db_path), check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                return db_path.parent, db_path, conn
+            except sqlite3.Error:
+                continue
+        raise RuntimeError("Нет доступа к каталогу состояния и нет temp-каталога")
 
     # ------------------------------------------------------------------ schema
     def _ensure_schema(self) -> None:
