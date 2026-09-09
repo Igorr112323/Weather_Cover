@@ -122,3 +122,23 @@ def test_world_ready(client):
     # world/ready.json == {"ok": true}
     r = client.get("/api/local/autonomy").json()
     assert r["checks"]["world_ready"]["ok"] is True
+
+
+def test_uvicorn_windowed_no_stdout(monkeypatch):
+    """Регрессия: windowed-exe имеет sys.stdout=None, uvicorn.Config падал
+    с 'Unable to configure formatter default' -> с log_config=None не падает."""
+    import sys
+
+    import uvicorn
+
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    class _App:
+        pass
+
+    cfg = uvicorn.Config(
+        _App(), host="127.0.0.1", port=0,
+        log_level="warning", access_log=False, log_config=None,
+    )
+    assert cfg.log_config is None

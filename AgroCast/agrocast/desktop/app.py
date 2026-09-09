@@ -330,6 +330,21 @@ def _find_free_port(preferred: int = DEFAULT_PORT, tries: int = 12) -> int:
     raise RuntimeError(f"Нет свободного порта рядом с {preferred}")
 
 
+def _ensure_stdio() -> None:
+    """PyInstaller --windowed оставляет sys.stdout/sys.stderr == None.
+
+    uvicorn при настройке форматтера логов вызывает sys.stdout.isatty() и
+    падает с «Unable to configure formatter 'default'». Подменяем None-потоки
+    на реальные (devnull), чтобы приложение работало без консоли.
+    """
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            try:
+                setattr(sys, name, open(os.devnull, "w", encoding="utf-8", errors="replace"))
+            except Exception:
+                pass
+
+
 def _route_uvicorn_log() -> None:
     """Дублирует логи uvicorn (ошибки старта сервера) в ~/.agrocast/agrocast.log."""
     import logging
@@ -343,8 +358,6 @@ def _route_uvicorn_log() -> None:
             lg = logging.getLogger(name)
             lg.addHandler(handler)
             lg.propagate = False
-        lg_err = logging.getLogger("uvicorn.error")
-        lg_err.addHandler(handler)
     except Exception:
         pass
 
@@ -352,13 +365,19 @@ def _route_uvicorn_log() -> None:
 def start_server(static_dir: Path, world_dir: Path, port: int = DEFAULT_PORT,
                  pump=None) -> tuple:
     """Запускает FastAPI (uvicorn) в потоке; возвращает (url, app, thread)."""
+    _ensure_stdio()
     _route_uvicorn_log()
     app = create_app(static_dir=static_dir, world_dir=world_dir, desktop=True)
 
     import uvicorn
 
     port = _find_free_port(port)  # занятый порт больше не роняет запуск
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
+    # log_config=None: uvicorn не трогает logging-конфигурацию (иначе падает
+    # в windowed-exe на форматтере 'default'); логи пишем сами в agrocast.log
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=port,
+        log_level="warning", access_log=False, log_config=None,
+    )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True, name="agrocast-api")
     thread.start()
