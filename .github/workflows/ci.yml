@@ -5,6 +5,9 @@ on:
     branches: [main, 'arena/**']
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: API smoke tests (Linux)
@@ -23,7 +26,7 @@ jobs:
       - name: Install API deps
         run: pip install fastapi uvicorn pydantic python-multipart pytest httpx
       - name: JS syntax
-        run: node --check static/desktop.js || true   # node есть на runner
+        run: node --check static/desktop.js || true
       - name: Python compile
         run: python -m compileall -q agrocast app.py
       - name: Run smoke tests
@@ -47,13 +50,47 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Build EXE + zip
         run: python tools/build_exe.py
+
       - name: Upload EXE artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: AgroCast-exe
           path: AgroCast/dist/AgroCast/AgroCast.exe
+
       - name: Upload ZIP artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: AgroCast-2.5-exe.zip
           path: AgroCast/dist/AgroCast-2.5-exe.zip
+
+      - name: Publish GitHub Release
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd AgroCast
+          gh release delete v2.5.0 --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create v2.5.0 dist/AgroCast-2.5-exe.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "AgroCast 2.5 — EXE (каркас-оболочка)" \
+            --notes "Каркас EXE AgroCast 2.5: Яндекс.Карта + Leaflet fallback, 28 точек P01–P28, справочник сортов (SQLite ~/.agrocast/crops.db), мок-прогнозы. Распакуйте zip и запустите AgroCast.exe."
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/v2.5.0/AgroCast-2.5-exe.zip"
+          echo "::notice title=DOWNLOAD_URL::$url"
+
+      - name: Collect build diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          cd AgroCast
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("dist/build_exe.log")
+          if p.exists():
+              body = p.read_text(encoding="utf-8").replace("%", "%25").replace("\r", "")
+              print("::error title=AgroCast build log::" + body.replace("\n", "%0A")[-7000:])
+          else:
+              print("::error::build_exe.log отсутствует")
+          PY
