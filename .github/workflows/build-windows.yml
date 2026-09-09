@@ -9,12 +9,13 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build WeatherCover.exe (Windows)
     runs-on: windows-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,10 +35,29 @@ jobs:
       - name: Package Windows app
         run: npm run package:win
 
+      - name: Package ZIP
+        shell: powershell
+        run: |
+          Compress-Archive -Path release/WeatherCover-win32-x64 -DestinationPath WeatherCover-win32-x64.zip -Force
+          Get-Item WeatherCover-win32-x64.zip | Select-Object Name,Length
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: WeatherCover-win32-x64
-          path: release/WeatherCover-win32-x64
+          path: WeatherCover-win32-x64.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v1.0.0-weather-cover"
+          gh release delete $tag --yes 2>$null
+          gh release create $tag `
+            --title "WeatherCover Windows" `
+            --notes "Собранный EXE для Windows: WeatherCover.exe (в архиве WeatherCover-win32-x64)." `
+            WeatherCover-win32-x64.zip
