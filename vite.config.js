@@ -28,13 +28,20 @@ const CSP_PRODUCTION = [
 
 /** Инъекция CSP в собранный HTML (в Electron заголовок ставит и app://-протокол). */
 function injectCsp() {
+  // frame-ancestors игнорируется в <meta> (действует только в заголовке)
+  // и шумит ошибкой в консоль, поэтому из meta-версии директива убрана.
+  // В Electron заголовок протокола отдаёт полную политику из electron/csp.cjs.
+  const CSP_META = CSP_PRODUCTION.split(";")
+    .map((part) => part.trim())
+    .filter((part) => part && !part.startsWith("frame-ancestors"))
+    .join("; ");
   return {
     name: "agro-inject-csp",
     apply: "build",
     transformIndexHtml: {
       order: "pre",
       handler() {
-        return [{ tag: "meta", attrs: { "http-equiv": "Content-Security-Policy", content: CSP_PRODUCTION }, injectTo: "head-prepend" }];
+        return [{ tag: "meta", attrs: { "http-equiv": "Content-Security-Policy", content: CSP_META }, injectTo: "head-prepend" }];
       },
     },
   };

@@ -82,8 +82,9 @@ async function scenario(browser) {
   // ── Запуск и оболочка ──────────────────────────────────────────────
   await page.getByText("АгроПрогноз", { exact: true }).first().waitFor({ timeout: 30000 });
   check("оболочка: название приложения", true);
+  const sidebar = page.locator(".sidebar__nav");
   for (const item of ["Карта", "Данные", "Отчёты", "Сорта кукурузы"]) {
-    check(`оболочка: пункт «${item}»`, await page.getByRole("button", { name: item }).count() === 1);
+    check(`оболочка: пункт «${item}»`, (await sidebar.getByRole("button", { name: item }).count()) === 1);
   }
   check("оболочка: версия", await page.getByText(/Версия \d+\.\d+\.\d+/).count() === 1);
 
@@ -97,13 +98,26 @@ async function scenario(browser) {
   );
 
   const mapBox = await page.locator(".leaflet-container").first().boundingBox();
-  // Клик левее центра: справа панель прогноза перекрывает карту.
-  await page.mouse.click(mapBox.x + mapBox.width * 0.35, mapBox.y + mapBox.height * 0.45);
-  await page
-    .waitForFunction(() => !document.body.textContent.includes("Выберите точку на карте"), null, {
-      timeout: 5000,
-    })
-    .catch(() => {});
+  // Кандидаты слева и внизу: справа — панель прогноза, в центре —
+  // регионы России (клик по региону приближает его, а не ставит точку).
+  // После неудачной попытки Esc возвращает прежний вид и слой.
+  const candidates = [
+    [0.1, 0.78],
+    [0.28, 0.22],
+    [0.55, 0.8],
+    [0.78, 0.62],
+  ];
+  for (const [fx, fy] of candidates) {
+    await page.mouse.click(mapBox.x + mapBox.width * fx, mapBox.y + mapBox.height * fy);
+    const selected = await page
+      .waitForFunction(() => !document.body.textContent.includes("Выберите точку на карте"), null, {
+        timeout: 2500,
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (selected) break;
+    await page.keyboard.press("Escape");
+  }
   check(
     "карта: точка выбрана кликом",
     (await page.getByText("Выберите точку на карте", { exact: true }).count()) === 0,
