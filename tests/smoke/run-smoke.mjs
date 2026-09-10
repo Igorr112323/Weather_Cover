@@ -55,6 +55,19 @@ async function main() {
   await mkdir(SHOTS_DIR, { recursive: true });
 
   const browser = await chromium.launch({ headless: !HEADED, timeout: 90000 });
+  try {
+    await scenario(browser);
+  } finally {
+    // browser.close() иногда виснет в CI — ждём не дольше 8 секунд,
+    // результат уже записан, дальше процесс завершается принудительно.
+    await Promise.race([
+      browser.close().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
+  }
+}
+
+async function scenario(browser) {
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   page.setDefaultTimeout(30000);
 
@@ -234,7 +247,6 @@ async function main() {
     for (const text of consoleErrors.slice(0, 10)) console.error(`  · ${text}`);
   }
 
-  await browser.close();
   await writeFile(
     path.join(SHOTS_DIR, "smoke-result.json"),
     JSON.stringify({ ok: failures.length === 0, failures, consoleErrors: consoleErrors.length }, null, 2),
@@ -248,7 +260,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("Smoke упал с исключением:", error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error("Smoke упал с исключением:", error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // Гарантированный выход: открытый браузер не должен держать процесс.
+    process.exit(process.exitCode ?? 0);
+  });

@@ -1,13 +1,10 @@
 # Сборка и проверка «АгроПрогноз — Кукуруза» на Windows.
 #
-# Что делает:
-#   1. Ставит зависимости, готовит иконки и геоданные.
-#   2. Гоняет unit-тесты (node --test).
-#   3. Собирает renderer (vite build).
-#   4. Поднимает предпросмотр сборки и гоняет браузерный smoke-тест (Playwright).
-#   5. Собирает portable EXE (electron-builder) и публикует артефакт
-#      AgroPrognoz-<version>-portable.exe.
-#   6. При пуше тега v* дополнительно создаёт GitHub Release с EXE.
+# Джобы:
+#   verify   — unit-тесты + сборка renderer (быстрый гейт).
+#   smoke    — браузерный smoke-тест сценария (информационный, релиз не блокирует).
+#   portable — portable EXE (electron-builder), артефакт AgroPrognoz-<version>-portable.exe.
+# При пуше тега v* EXE дополнительно публикуется в GitHub Release.
 #
 # Платные сервисы не используются: только GitHub-hosted runner и npm.
 
@@ -28,7 +25,7 @@ env:
 
 jobs:
   verify:
-    name: Тесты и smoke
+    name: Тесты и сборка
     runs-on: windows-latest
     defaults:
       run:
@@ -51,6 +48,32 @@ jobs:
 
       - name: Unit-тесты
         run: npm test
+
+      - name: Сборка renderer
+        run: npm run build
+
+  smoke:
+    name: Smoke-тест в браузере
+    runs-on: windows-latest
+    needs: verify
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci --no-audit --no-fund
+
+      - name: Иконки и геоданные
+        run: |
+          npm run icon
+          npm run prepare:assets
 
       - name: Сборка renderer
         run: npm run build
