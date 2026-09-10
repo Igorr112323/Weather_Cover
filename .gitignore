@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+src/assets/geo/cache/
+*.log
+.vite/
+coverage/
+tests/smoke/screenshots/
+preview.pid

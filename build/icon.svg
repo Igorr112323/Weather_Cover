@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="АгроПрогноз — Кукуруза">
+  <rect width="64" height="64" rx="14" fill="#16834A"/>
+  <g fill="#FFFFFF">
+    <path d="M31.2 43.4c-4.6 5.6-11.4 8.2-16.6 7.2.4-5.4 4.6-10 10-12.2z"/>
+    <path d="M32.8 43.4c4.6 5.6 11.4 8.2 16.6 7.2-.4-5.4-4.6-10-10-12.2z"/>
+    <path d="M32 8.6c5.8 3.4 8.8 9.4 8.8 16.4v11c0 5.2-3.9 9.2-8.8 9.2s-8.8-4-8.8-9.2V25c0-7 3-13 8.8-16.4z"/>
+  </g>
+  <g fill="#16834A">
+    <rect x="24.6" y="20.4" width="3.8" height="3.8" rx="1.5"/>
+    <rect x="30.1" y="20.4" width="3.8" height="3.8" rx="1.5"/>
+    <rect x="35.6" y="20.4" width="3.8" height="3.8" rx="1.5"/>
+    <rect x="24.6" y="27.4" width="3.8" height="3.8" rx="1.5"/>
+    <rect x="30.1" y="27.4" width="3.8" height="3.8" rx="1.5"/>
+    <rect x="35.6" y="27.4" width="3.8" height="3.8" rx="1.5"/>
+  </g>
+</svg>

@@ -1,0 +1,338 @@
+/* Каркас приложения: боковая панель, рабочая область, раскладки экранов. */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Боковая панель ─────────────────────────────────────────── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+}
+
+.sidebar__logo {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: block;
+}
+
+.sidebar__names {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar__name {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.sidebar__sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-2) 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: 44px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.nav-item:hover {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.nav-item .icon {
+  flex: none;
+  color: var(--text-muted);
+  transition: color var(--dur) var(--ease);
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--surface-green);
+  color: var(--green-active);
+  font-weight: 600;
+}
+
+.nav-item[aria-current="page"] .icon {
+  color: var(--green);
+}
+
+.sidebar__foot {
+  margin-top: auto;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__version {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+  font-variant-numeric: var(--tabular);
+}
+
+.sidebar__mode {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-muted);
+}
+
+/* Узкий режим: только иконки с подсказками */
+.shell--narrow .sidebar__names,
+.shell--narrow .nav-item__label,
+.shell--narrow .sidebar__mode {
+  display: none;
+}
+
+.shell--narrow .sidebar__brand {
+  justify-content: center;
+  padding: var(--sp-4) var(--sp-2) var(--sp-3);
+}
+
+.shell--narrow .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.shell--narrow .sidebar__foot {
+  align-items: center;
+  padding: var(--sp-3) var(--sp-2);
+}
+
+/* ── Рабочая область ────────────────────────────────────────── */
+.main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.main--flush {
+  overflow: hidden;
+}
+
+.page {
+  padding: var(--page-pad);
+  width: 100%;
+  max-width: 1680px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-height: 100%;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.page-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.toolbar__spacer {
+  margin-left: auto;
+}
+
+/* ── Карта ──────────────────────────────────────────────────── */
+.map-page {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--app-bg);
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-ui {
+  position: absolute;
+  z-index: 800;
+}
+
+.map-ui--left {
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.map-ui--right {
+  top: 20px;
+  right: 20px;
+  width: 320px;
+  max-height: calc(100% - 40px);
+  overflow: auto;
+}
+
+.map-ui--bottom {
+  left: 20px;
+  bottom: 20px;
+}
+
+/* ── Результаты ─────────────────────────────────────────────── */
+.results-wrap {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.results-grid__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.results-grid__side {
+  min-width: 0;
+}
+
+@container (max-width: 1000px) {
+  .results-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .results-grid__side {
+    order: 2;
+  }
+}
+
+.indicators {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@container (max-width: 1240px) {
+  .indicators {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 720px) {
+  .indicators {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.chart-box {
+  position: relative;
+  height: 260px;
+}
+
+/* Сорта: список + панель сведений */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: var(--sp-4);
+  align-items: start;
+  container-type: inline-size;
+}
+
+@container (max-width: 1100px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Состояние загрузки / ошибки на весь экран */
+.boot {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-8);
+  background: var(--app-bg);
+}
+
+.boot__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  text-align: center;
+  max-width: 520px;
+}
+
+@media (max-width: 1179px) {
+  .shell {
+    grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
+  }
+}
