@@ -76,6 +76,9 @@ async function scenario(browser) {
   });
   page.on("pageerror", (error) => consoleErrors.push(String(error?.message ?? error).slice(0, 300)));
 
+  // Любое исключение — с дампом состояния страницы в лог (CI-логи артефактов
+  // недоступны из песочницы, поэтому диагностика пишется прямо в smoke.log).
+  try {
   console.log(`Открываю ${BASE_URL}`);
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
 
@@ -272,6 +275,35 @@ async function scenario(browser) {
     process.exitCode = 1;
   } else {
     console.log("\nSmoke OK: все проверки прошли");
+  }
+  } catch (error) {
+    await dumpDiagnostics(page);
+    throw error;
+  }
+}
+
+async function dumpDiagnostics(page) {
+  try {
+    const state = await page.evaluate(() => ({
+      url: location.href,
+      dialogs: [...document.querySelectorAll('[role="dialog"]')].map((node) =>
+        (node.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 150),
+      ),
+      buttons: [...document.querySelectorAll("button")]
+        .map((node) => (node.getAttribute("aria-label") || node.innerText || "").replace(/\s+/g, " ").trim().slice(0, 60))
+        .filter(Boolean)
+        .slice(0, 60),
+      body: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 2500),
+    }));
+    console.error("── Диагностика страницы ──");
+    console.error(`  url: ${state.url}`);
+    console.error(`  диалоги (${state.dialogs.length}): ${JSON.stringify(state.dialogs)}`);
+    console.error(`  кнопки (${state.buttons.length}): ${JSON.stringify(state.buttons)}`);
+    console.error(`  текст: ${state.body}`);
+    await page.screenshot({ path: path.join(SHOTS_DIR, "99-failure.png") }).catch(() => {});
+    console.error("  · скриншот tests/smoke/screenshots/99-failure.png");
+  } catch (nested) {
+    console.error("Диагностика не удалась:", String(nested).slice(0, 200));
   }
 }
 
