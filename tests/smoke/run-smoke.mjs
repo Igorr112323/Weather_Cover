@@ -29,6 +29,13 @@ const HEADED = process.env.AGRO_SMOKE_HEADED === "1";
 const failures = [];
 const consoleErrors = [];
 
+// Глобальный сторож: прогон обязан уложиться в 10 минут, иначе — fail-fast,
+// а не вечное висение шага CI.
+setTimeout(() => {
+  console.error("SMOKE GLOBAL TIMEOUT: принудительное завершение");
+  process.exit(1);
+}, 10 * 60 * 1000).unref();
+
 function check(name, condition, detail = "") {
   if (condition) {
     console.log(`  ✓ ${name}`);
@@ -47,8 +54,9 @@ async function shot(page, name) {
 async function main() {
   await mkdir(SHOTS_DIR, { recursive: true });
 
-  const browser = await chromium.launch({ headless: !HEADED });
+  const browser = await chromium.launch({ headless: !HEADED, timeout: 90000 });
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  page.setDefaultTimeout(30000);
 
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text().slice(0, 300));
@@ -78,10 +86,11 @@ async function main() {
   const mapBox = await page.locator(".leaflet-container").first().boundingBox();
   // Клик левее центра: справа панель прогноза перекрывает карту.
   await page.mouse.click(mapBox.x + mapBox.width * 0.35, mapBox.y + mapBox.height * 0.45);
-  await page.waitForFunction(
-    () => !document.body.textContent.includes("Выберите точку на карте"),
-    { timeout: 5000 },
-  ).catch(() => {});
+  await page
+    .waitForFunction(() => !document.body.textContent.includes("Выберите точку на карте"), null, {
+      timeout: 5000,
+    })
+    .catch(() => {});
   check(
     "карта: точка выбрана кликом",
     (await page.getByText("Выберите точку на карте", { exact: true }).count()) === 0,
