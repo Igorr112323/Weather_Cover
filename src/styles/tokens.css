@@ -1,0 +1,77 @@
+/*
+ * Токены дизайна «АгроПрогноз — Кукуруза».
+ * Один светлый вариант темы: белый + зелёный.
+ * Красный и янтарный — только для ошибок, предупреждений и рисков.
+ */
+:root {
+  /* Поверхности */
+  --app-bg: #f4f7f4;
+  --surface: #ffffff;
+  --surface-muted: #f8faf8;
+  --surface-green: #eaf5ee;
+
+  /* Текст */
+  --text-primary: #18271e;
+  --text-secondary: #58695e;
+  --text-muted: #68776d;
+  --text-inverse: #ffffff;
+
+  /* Границы */
+  --border: #dfe7e1;
+  --border-strong: #bbcbc0;
+
+  /* Акцент */
+  --green: #16834a;
+  --green-hover: #116b3c;
+  --green-active: #0d5731;
+  --green-ring: rgba(22, 131, 74, 0.35);
+  --green-soft: rgba(22, 131, 74, 0.08);
+  --green-on-accent: #ffffff;
+
+  /* Смысловые цвета */
+  --danger: #b93838;
+  --danger-bg: #fff1f1;
+  --warning: #8a5b10;
+  --warning-bg: #fff6e5;
+
+  /* Типографика */
+  --font-ui: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Inter", "Segoe UI", Arial, sans-serif;
+
+  /* Шкала отступов */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Радиусы */
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-pop: 12px;
+
+  /* Размеры */
+  --control-h: 40px;
+  --row-h: 48px;
+  --sidebar-w: 216px;
+  --sidebar-w-collapsed: 72px;
+  --page-pad: var(--sp-6);
+
+  /* Тени — только у плавающих слоёв */
+  --shadow-pop: 0 10px 28px rgba(24, 39, 30, 0.16), 0 1px 2px rgba(24, 39, 30, 0.1);
+  --shadow-panel: 0 6px 20px rgba(24, 39, 30, 0.12), 0 1px 2px rgba(24, 39, 30, 0.08);
+
+  /* Движение */
+  --dur: 150ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Числа */
+  --tabular: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 1ms;
+  }
+}

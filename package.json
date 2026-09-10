@@ -1,0 +1,80 @@
+{
+  "name": "agroprognoz-corn",
+  "productName": "AgroPrognoz",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "description": "АгроПрогноз — Кукуруза: выбор территории, параметры прогноза и погодные показатели для выращивания кукурузы.",
+  "author": "AgroPrognoz",
+  "license": "MIT",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "icon": "node scripts/build-icon.mjs",
+    "dev": "node scripts/dev.mjs",
+    "preview": "node scripts/preview.mjs",
+    "start": "electron .",
+    "build": "vite build",
+    "test": "node --test tests/date-period.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs",
+    "test:smoke": "node tests/smoke/run-smoke.mjs",
+    "dist:win": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "chart.js": "4.5.1",
+    "leaflet": "1.9.4",
+    "sql.js": "1.14.2"
+  },
+  "devDependencies": {
+    "electron": "43.6.0",
+    "electron-builder": "26.15.3",
+    "lucide-static": "1.44.0",
+    "playwright": "1.56.1",
+    "sharp": "0.35.4",
+    "topojson-client": "3.1.0",
+    "vite": "7.3.6",
+    "world-atlas": "2.0.2"
+  },
+  "build": {
+    "appId": "local.agroprognoz.corn",
+    "productName": "AgroPrognoz",
+    "copyright": "MIT licensed. Includes Natural Earth and OpenStreetMap/CARTO/Esri map data under their own terms.",
+    "asar": true,
+    "asarUnpack": [
+      "dist/**/*"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "calculations/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "AgroPrognoz-${version}-portable.exe"
+    },
+    "portable": {
+      "artifactName": "AgroPrognoz-${version}-portable.exe",
+      "requestExecutionLevel": "user"
+    }
+  }
+}

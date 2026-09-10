@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="АгроПрогноз — Кукуруза">
+  <rect width="64" height="64" rx="12" fill="#16834A"/>
+  <g fill="#FFFFFF">
+    <path d="M30 44c-5 5-11 7-15 6 .5-4.5 4-8.5 8.5-10.5z"/>
+    <path d="M34 44c5 5 11 7 15 6-.5-4.5-4-8.5-8.5-10.5z"/>
+    <path d="M32 10c6 3.5 9 9.5 9 16.5v10c0 5-4 9-9 9s-9-4-9-9v-10c0-7 3-13 9-16.5z"/>
+  </g>
+</svg>

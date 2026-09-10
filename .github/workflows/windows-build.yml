@@ -1,0 +1,174 @@
+# Сборка и проверка «АгроПрогноз — Кукуруза» на Windows.
+#
+# Джобы:
+#   verify   — unit-тесты + сборка renderer (быстрый гейт).
+#   smoke    — браузерный smoke-тест сценария (информационный, релиз не блокирует).
+#   portable — portable EXE (electron-builder), артефакт AgroPrognoz-<version>-portable.exe.
+# При пуше тега v* EXE дополнительно публикуется в GitHub Release.
+#
+# Платные сервисы не используются: только GitHub-hosted runner и npm.
+
+name: windows-build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  verify:
+    name: Тесты и сборка
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci --no-audit --no-fund
+
+      - name: Иконки и геоданные
+        run: |
+          npm run icon
+          npm run prepare:assets
+
+      - name: Unit-тесты
+        run: npm test
+
+      - name: Сборка renderer
+        run: npm run build
+
+  smoke:
+    name: Smoke-тест в браузере
+    runs-on: windows-latest
+    needs: verify
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci --no-audit --no-fund
+
+      - name: Иконки и геоданные
+        run: |
+          npm run icon
+          npm run prepare:assets
+
+      - name: Сборка renderer
+        run: npm run build
+
+      - name: Браузер для smoke-теста
+        run: npx playwright install chromium
+
+      - name: Предпросмотр сборки (фон)
+        run: |
+          npm run preview > preview.log 2>&1 &
+          echo $! > preview.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4173/ > /dev/null; then
+              echo "preview is up"; break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:4173/ > /dev/null
+
+      - name: Smoke-тест сценария
+        timeout-minutes: 15
+        run: |
+          mkdir -p tests/smoke/debug
+          npm run test:smoke 2>&1 | tee tests/smoke/debug/smoke.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Чёрный ящик при падении
+        if: failure()
+        run: |
+          node tests/smoke/debug-capture.mjs || true
+          git config user.name "agro-debug"
+          git config user.email "agro-debug@local"
+          git checkout -B debug/smoke
+          git add -f tests/smoke/debug/ tests/smoke/screenshots/
+          git commit -m "debug ${GITHUB_RUN_ID}" || true
+          git push -f origin debug/smoke
+
+      - name: Остановить предпросмотр
+        if: always()
+        run: kill "$(cat preview.pid)" 2>/dev/null || true
+
+      - name: Скриншоты smoke-теста
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: tests/smoke/screenshots/
+          if-no-files-found: warn
+          retention-days: 14
+
+  portable:
+    name: Portable EXE
+    runs-on: windows-latest
+    needs: verify
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci --no-audit --no-fund
+
+      - name: Иконки и геоданные
+        run: |
+          npm run icon
+          npm run prepare:assets
+
+      - name: Сборка renderer
+        run: npm run build
+
+      - name: Portable EXE
+        timeout-minutes: 30
+        run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Проверить артефакт
+        run: ls -la release/
+
+      - name: Артефакт AgroPrognoz-portable.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgroPrognoz-portable
+          path: release/AgroPrognoz-*-portable.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release при теге v*
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release create "${GITHUB_REF_NAME}" release/AgroPrognoz-*-portable.exe --title "${GITHUB_REF_NAME}" --notes "Portable-сборка для Windows (без установки)."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

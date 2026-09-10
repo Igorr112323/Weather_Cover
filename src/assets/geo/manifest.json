@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-10T12:46:52.848Z",
+  "sources": {
+    "countries": {
+      "package": "world-atlas@2.0.2",
+      "file": "countries-110m.json",
+      "note": "TopoJSON на основе Natural Earth 1:110m; координаты без упрощения, только округление",
+      "features": 177,
+      "license": "ISC (обёртка) + Natural Earth public domain (данные)"
+    }
+  },
+  "outputs": {
+    "countries": {
+      "file": "countries.geojson",
+      "bytes": 212647
+    },
+    "russiaRegions": {
+      "file": "russia-admin1.geojson",
+      "bytes": 1104026
+    }
+  },
+  "attribution": "Границы: Natural Earth (admin 0 countries, admin 1 states and provinces)"
+}
