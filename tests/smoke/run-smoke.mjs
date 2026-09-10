@@ -232,7 +232,7 @@ async function scenario(browser) {
   await page.getByText(varietyName).first().waitFor({ timeout: 10000 });
   check("сорта: создание", true);
 
-  await page.getByText(varietyName).first().click();
+  // После сохранения запись уже выбрана и detail открыт (клик по имени лишь снял бы выбор).
   await page.getByRole("button", { name: "Редактировать", exact: true }).click();
   await page.getByRole("dialog").waitFor({ timeout: 5000 });
   const renamed = `${varietyName}-2`;

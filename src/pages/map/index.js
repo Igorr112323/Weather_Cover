@@ -294,6 +294,7 @@ export function createMapPage(context = {}) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     point = { lat, lng };
     paintPoint({ pulse: true });
+    paintCoords();
     showFieldError(null);
     saveStateSoon();
   }
