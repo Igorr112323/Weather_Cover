@@ -21,7 +21,6 @@ import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
 import { BASEMAPS, DEFAULT_BASEMAP, createBasemap, watchTiles } from "./basemaps.js";
 import { createCountryLayer, createRegionLayer, loadGeoData, REGION_CLICK_MAX_ZOOM, REGION_ZOOM_MIN } from "./geo-layers.js";
-import { createGraticule } from "./graticule.js";
 import { runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
@@ -35,7 +34,6 @@ export function createMapPage(context = {}) {
   let map = null;
   let tileLayer = null;
   let tileWatch = null;
-  let graticule = null;
   let countryLayer = null;
   let regionApi = null;
   let marker = null;
@@ -123,12 +121,6 @@ export function createMapPage(context = {}) {
   ]);
 
   const container = h("div", { class: "map-canvas" });
-  const layerSwitch = createSegmented({
-    label: "Подложка карты",
-    value: DEFAULT_BASEMAP,
-    options: Object.values(BASEMAPS).map((basemap) => ({ value: basemap.id, label: basemap.label })),
-    onChange: (value) => setBasemap(value, { save: true }),
-  });
   const zoomControls = h("div", { class: "map-card" }, [
     h("div", { class: "map-controls__row" }, [
       h("button", { type: "button", class: "map-btn", "aria-label": "Приблизить", onclick: () => map?.zoomIn() }, [icon("plus", { size: 16 })]),
@@ -139,7 +131,7 @@ export function createMapPage(context = {}) {
   const mapErrorHost = h("div");
   const node = h("div", { class: "map-page" }, [
     container,
-    h("div", { class: "map-ui map-ui--left" }, [layerSwitch, zoomControls]),
+    h("div", { class: "map-ui map-ui--left" }, [zoomControls]),
     h("div", { class: "map-ui map-ui--right" }, [panel]),
     mapErrorHost,
   ]);
@@ -175,7 +167,6 @@ export function createMapPage(context = {}) {
       ],
     });
 
-    graticule = createGraticule(map);
     setBasemap(BASEMAPS[saved.layer] ? saved.layer : DEFAULT_BASEMAP);
 
     // Выбор точки — обычный клик по свободной поверхности карты.
@@ -393,9 +384,6 @@ export function createMapPage(context = {}) {
   function setBasemap(id, { save = true } = {}) {
     const basemap = createBasemap(id);
     currentBasemap = basemap.id;
-    for (const button of layerSwitch.querySelectorAll(".segmented__btn")) {
-      button.setAttribute("aria-pressed", button.dataset.value === currentBasemap ? "true" : "false");
-    }
     if (!map) return;
     if (tileLayer) {
       map.removeLayer(tileLayer);
@@ -648,7 +636,6 @@ export function createMapPage(context = {}) {
       unsubscribe?.();
       popEsc?.();
       resizeObserver?.disconnect();
-      graticule?.destroy();
       if (map) {
         map.off();
         map.remove();

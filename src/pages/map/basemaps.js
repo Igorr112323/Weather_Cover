@@ -1,10 +1,8 @@
 /**
- * Подложки карты.
+ * Подложка карты — только спутниковые снимки.
  *
- * Тайлы — единственные сетевые запросы приложения. Оба источника требуют
- * указания авторства, оно сохранено в attribution слоёв (это текст источников,
- * а не пользовательские данные). Условия использования:
- *   • CARTO Positron — https://carto.com/attribution (данные © OpenStreetMap, ODbL)
+ * Тайлы — единственные сетевые запросы приложения. Источник требует указания
+ * авторства, оно сохранено в attribution слоя. Условия использования:
  *   • Esri World Imagery — https://www.esri.com/legal/licensing
  *
  * Без сети карта показывает сообщение об ошибке, остальные разделы работают.
@@ -13,21 +11,6 @@
 import L from "leaflet";
 
 export const BASEMAPS = Object.freeze({
-  light: {
-    id: "light",
-    label: "Карта",
-    create() {
-      return L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        subdomains: "abcd",
-        maxZoom: 20,
-        maxNativeZoom: 19,
-        keepBuffer: 1,
-        crossOrigin: true,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      });
-    },
-  },
   satellite: {
     id: "satellite",
     label: "Спутник",
@@ -43,7 +26,7 @@ export const BASEMAPS = Object.freeze({
   },
 });
 
-export const DEFAULT_BASEMAP = "light";
+export const DEFAULT_BASEMAP = "satellite";
 
 export function createBasemap(id) {
   return BASEMAPS[id] ?? BASEMAPS[DEFAULT_BASEMAP];

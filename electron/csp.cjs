@@ -1,14 +1,14 @@
 /**
  * Единый источник политики Content-Security-Policy для main process и сборки Vite.
  *
- * Разрешены собственные ресурсы приложения и два источника тайлов:
- * CARTO (светлая подложка) и Esri World Imagery (спутник). Никаких CDN со
- * скриптами, no eval (кроме wasm), no object/base/frame.
+ * Разрешены собственные ресурсы приложения и один источник тайлов —
+ * Esri World Imagery (спутник). Никаких CDN со скриптами, no eval
+ * (кроме wasm), no object/base/frame.
  */
 
 "use strict";
 
-const TILE_HOSTS = ["https://basemaps.cartocdn.com", "https://*.basemaps.cartocdn.com", "https://server.arcgisonline.com"];
+const TILE_HOSTS = ["https://server.arcgisonline.com"];
 
 const CSP_PRODUCTION = [
   "default-src 'self'",
@@ -29,11 +29,6 @@ const CSP_PRODUCTION = [
 /** Внешние ссылки, которые разрешено открыть в системном браузере (атрибуция источников). */
 const EXTERNAL_LINK_HOSTS = new Set([
   "leafletjs.com",
-  "www.openstreetmap.org",
-  "openstreetmap.org",
-  "carto.com",
-  "www.carto.com",
-  "cartocdn.com",
   "www.esri.com",
   "esri.com",
   "server.arcgisonline.com",
