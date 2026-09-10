@@ -107,7 +107,7 @@ jobs:
           git config user.name "agro-debug"
           git config user.email "agro-debug@local"
           git checkout -B debug/smoke
-          git add -f tests/smoke/debug/
+          git add -f tests/smoke/debug/ tests/smoke/screenshots/
           git commit -m "debug ${GITHUB_RUN_ID}" || true
           git push -f origin debug/smoke
 

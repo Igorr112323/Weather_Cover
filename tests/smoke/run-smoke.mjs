@@ -240,6 +240,7 @@ async function scenario(browser) {
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await page.getByText(renamed).first().waitFor({ timeout: 10000 });
   check("сорта: переименование", true);
+  await shot(page, "07b-renamed");
 
   await page.getByText(renamed).first().click();
   await page.getByRole("button", { name: "Удалить", exact: true }).click();
