@@ -430,6 +430,18 @@
   box-shadow: 0 0 0 3px var(--green-ring);
 }
 
+.control--select {
+  position: relative;
+  padding-right: 0;
+}
+
+.control--select select {
+  appearance: none;
+  height: 100%;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
 .select__chevron {
   position: absolute;
   right: 10px;
@@ -437,6 +449,7 @@
   transform: translateY(-50%);
   color: var(--text-muted);
   pointer-events: none;
+  display: inline-flex;
 }
 
 .search {
@@ -1024,16 +1037,19 @@
   box-shadow: var(--shadow-panel);
   font-size: 13px;
   line-height: 18px;
-  max-width: calc(100% - 40px);
+  max-width: min(560px, calc(100% - 400px));
 }
 
 .grain {
-  width: 12px;
-  height: 12px;
+  display: block;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: var(--green);
+  background: #ffd23f;
   border: 3px solid #fff;
-  box-shadow: 0 0 0 4px rgba(22, 131, 74, 0.28);
+  box-shadow:
+    0 0 0 2px rgba(24, 39, 30, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 .grain--pulse {
@@ -1042,10 +1058,14 @@
 
 @keyframes grain-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(22, 131, 74, 0.5);
+    box-shadow:
+      0 0 0 2px rgba(24, 39, 30, 0.55),
+      0 0 0 0 rgba(255, 210, 63, 0.7);
   }
   100% {
-    box-shadow: 0 0 0 16px rgba(22, 131, 74, 0);
+    box-shadow:
+      0 0 0 2px rgba(24, 39, 30, 0.55),
+      0 0 0 18px rgba(255, 210, 63, 0);
   }
 }
 
@@ -1056,18 +1076,31 @@
   height: 24px;
 }
 
-/* Leaflet: подписи и рамки в дизайн-системе */
-.leaflet-container {
+/* Leaflet: подписи и рамки в дизайн-системе.
+   Селекторы через .map-canvas — стили Leaflet попадают в бандл позже наших. */
+.map-canvas.leaflet-container {
   font-family: var(--font-ui);
-  background: var(--app-bg);
+  font-size: 12px;
+  line-height: 16px;
+  background: #0f1a14;
+  cursor: crosshair;
 }
 
-.leaflet-container:focus-visible {
+.map-canvas.leaflet-container.leaflet-drag-target,
+.map-canvas.leaflet-container:active {
+  cursor: grabbing;
+}
+
+.map-canvas .leaflet-interactive {
+  cursor: crosshair;
+}
+
+.map-canvas.leaflet-container:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: -2px;
 }
 
-.leaflet-control-attribution {
+.map-canvas .leaflet-control-attribution {
   background: rgba(255, 255, 255, 0.88);
   border-radius: 6px 6px 0 0;
   color: var(--text-muted);
@@ -1076,7 +1109,7 @@
   padding: 2px 6px;
 }
 
-.leaflet-control-attribution a {
+.map-canvas .leaflet-control-attribution a {
   color: var(--text-muted);
   text-decoration: underline;
 }
@@ -1096,9 +1129,9 @@
   display: none;
 }
 
-/* ── Календарь ──────────────────────────────────────────────── */
-.cal {
-  width: 288px;
+/* ── Выбор месяца ───────────────────────────────────────────── */
+.mp {
+  width: 300px;
   padding: var(--sp-3);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1106,154 +1139,114 @@
   box-shadow: var(--shadow-pop);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
+  z-index: 1100;
 }
 
-.cal__head {
+.mp__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
 }
 
-.cal__label {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 600;
+.mp__year {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
   text-align: center;
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: 6px;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  font-variant-numeric: var(--tabular);
   color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 
-.cal__label:hover {
+.mp__year:hover {
   background: var(--surface-muted);
 }
 
-.cal__navs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+.mp__year:focus {
+  outline: none;
+  border-color: var(--green);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--green-ring);
 }
 
-.cal__grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-
-.cal__dow {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--text-muted);
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding-bottom: 2px;
-}
-
-.cal__day {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  aspect-ratio: 1;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-variant-numeric: var(--tabular);
-  cursor: pointer;
-  transition:
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
-}
-
-.cal__day:hover:not(:disabled) {
-  background: var(--surface-green);
-}
-
-.cal__day:disabled {
-  color: var(--text-muted);
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.cal__day.is-outside {
-  color: var(--text-muted);
-  opacity: 0.5;
-}
-
-.cal__day.is-today::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border: 1px solid var(--green);
-  border-radius: 7px;
-  pointer-events: none;
-}
-
-.cal__day.is-selected {
-  background: var(--green);
-  color: #fff;
-  font-weight: 600;
-}
-
-.cal__day.is-selected.is-today::after {
-  border-color: rgba(255, 255, 255, 0.9);
-  inset: 2px;
-}
-
-.cal__months {
+.mp__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-1);
 }
 
-.cal__month-btn,
-.cal__year-btn {
-  height: 34px;
+.mp__month {
+  position: relative;
+  height: 40px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 13px;
+  text-transform: capitalize;
   cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 
-.cal__month-btn:hover:not(:disabled),
-.cal__year-btn:hover:not(:disabled) {
+.mp__month:hover:not(:disabled) {
   border-color: var(--green);
-  color: var(--text-primary);
   background: var(--surface-green);
 }
 
-.cal__month-btn[aria-pressed="true"],
-.cal__year-btn[aria-pressed="true"] {
+.mp__month:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+.mp__month:disabled {
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border-color: transparent;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mp__month.is-current::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.mp__month.is-selected {
   background: var(--green);
   border-color: var(--green);
   color: #fff;
   font-weight: 600;
 }
 
-.cal__months-title {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-muted);
-  text-align: center;
+.mp__month.is-selected.is-current::after {
+  background: #fff;
 }
 
-.cal__foot {
+.mp__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding-top: var(--sp-1);
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--border);
 }
 

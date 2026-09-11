@@ -109,6 +109,30 @@ export function computePeriod(startDate, rangeMonths) {
   };
 }
 
+/** Первый день месяца указанной даты: "2026-09-17" → "2026-09-01". */
+export function startOfMonth(iso) {
+  const p = parseIsoDate(iso);
+  if (!p) throw new RangeError(`Некорректная дата: ${String(iso)}`);
+  return isoFromParts(p.y, p.m, 1);
+}
+
+/**
+ * Порядковый номер месяца (год × 12 + месяц − 1): сравнение и арифметика
+ * «по месяцам» без учёта дней. Для некорректной даты — NaN.
+ */
+export function monthIndex(iso) {
+  const p = parseIsoDate(iso);
+  if (!p) return NaN;
+  return p.y * 12 + (p.m - 1);
+}
+
+/** Обратное преобразование: номер месяца → первый день этого месяца. */
+export function isoFromMonthIndex(index) {
+  const n = Math.trunc(Number(index));
+  if (!Number.isFinite(n) || n < 0) throw new RangeError(`Некорректный номер месяца: ${String(index)}`);
+  return isoFromParts(Math.floor(n / 12), (n % 12) + 1, 1);
+}
+
 /** Список дат отрезка включительно. */
 export function listDates(startDate, endDate) {
   const start = toOrdinal(startDate);

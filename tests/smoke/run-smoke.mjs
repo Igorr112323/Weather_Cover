@@ -11,9 +11,10 @@
  *   AGRO_SMOKE_SHOTS — каталог скриншотов (по умолчанию tests/smoke/screenshots)
  *   AGRO_SMOKE_HEADED — 1, чтобы смотреть за прогоном в окне браузера
  *
- * Сценарий: запуск → выбор точки → выбор сорта → прогноз → результаты →
- * сохранение отчёта → данные → архив → справочник сортов (добавление,
- * редактирование, удаление). Любая ошибка в консоли браузера роняет прогон.
+ * Сценарий: запуск → выбор точки кликом → выбор месяца (без дней) → выбор
+ * сорта → прогноз → результаты → сохранение отчёта → данные → архив →
+ * справочник сортов (добавление, редактирование, удаление). Любая ошибка
+ * в консоли браузера роняет прогон.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -72,7 +73,14 @@ async function scenario(browser) {
   page.setDefaultTimeout(30000);
 
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text().slice(0, 300));
+    if (message.type() !== "error") return;
+    const text = message.text();
+    // Спутниковые тайлы могут быть недоступны в изолированной сети CI — это
+    // не ошибка приложения (оно показывает баннер «Не удалось загрузить…»).
+    const location = message.location?.() ?? {};
+    const url = String(location.url ?? "");
+    if (/Failed to load resource/.test(text) && (url === "" || /arcgisonline\.com/.test(url))) return;
+    consoleErrors.push(text.slice(0, 300));
   });
   page.on("pageerror", (error) => consoleErrors.push(String(error?.message ?? error).slice(0, 300)));
 
@@ -95,40 +103,55 @@ async function scenario(browser) {
   await page.locator(".leaflet-container").first().waitFor({ timeout: 30000 });
   check("карта: контейнер Leaflet", true);
   check("карта: панель прогноза", await page.getByText("Прогноз", { exact: true }).count() >= 1);
-  check(
-    "карта: точка не выбрана",
-    await page.getByText("Выберите точку на карте", { exact: true }).count() === 1,
-  );
+  const POINT_PLACEHOLDER = "Нажмите на карту, чтобы выбрать поле";
+  check("карта: точка не выбрана", await page.getByText(POINT_PLACEHOLDER, { exact: true }).count() === 1);
 
   const mapBox = await page.locator(".leaflet-container").first().boundingBox();
-  // Кандидаты слева и внизу: справа — панель прогноза, в центре —
-  // регионы России (клик по региону приближает его, а не ставит точку).
-  // После неудачной попытки Esc возвращает прежний вид и слой.
-  const candidates = [
-    [0.1, 0.78],
-    [0.28, 0.22],
-    [0.55, 0.8],
-    [0.78, 0.62],
-  ];
-  for (const [fx, fy] of candidates) {
-    await page.mouse.click(mapBox.x + mapBox.width * fx, mapBox.y + mapBox.height * fy);
-    const selected = await page
-      .waitForFunction(() => !document.body.textContent.includes("Выберите точку на карте"), null, {
-        timeout: 2500,
-      })
-      .then(() => true)
-      .catch(() => false);
-    if (selected) break;
-    await page.keyboard.press("Escape");
-  }
-  check(
-    "карта: точка выбрана кликом",
-    (await page.getByText("Выберите точку на карте", { exact: true }).count()) === 0,
-  );
+  // Один клик в центре карты (поверх регионов России) ставит точку —
+  // никаких режимов и приближения регионов.
+  await page.mouse.click(mapBox.x + mapBox.width * 0.45, mapBox.y + mapBox.height * 0.45);
+  await page.waitForFunction((text) => !document.body.textContent.includes(text), POINT_PLACEHOLDER, { timeout: 5000 });
+  check("карта: точка выбрана одним кликом", (await page.getByText(POINT_PLACEHOLDER, { exact: true }).count()) === 0);
+  const coordsBefore = await page.locator(".forecast-panel .control__adorn").first().innerText();
   check(
     "карта: координаты с пятью знаками",
     await page.getByText(/\d{1,3}\.\d{5}, -?\d{1,3}\.\d{5}/).count() >= 1,
   );
+  await page.mouse.click(mapBox.x + mapBox.width * 0.2, mapBox.y + mapBox.height * 0.7);
+  await page.waitForTimeout(400);
+  const coordsAfter = await page.locator(".forecast-panel .control__adorn").first().innerText();
+  check("карта: второй клик переносит точку", coordsBefore !== coordsAfter);
+  check("карта: маркер один", (await page.locator(".map-grain-icon").count()) === 1);
+
+  // ── Месяц начала: только месяцы и годы, от января 1990 до текущего месяца ──
+  const monthInput = page.locator("input[placeholder='мм.гггг']");
+  check("месяц: поле показывает месяц и год", /^[А-Яа-я]+ \d{4}$/.test(await monthInput.inputValue()));
+  await page.getByRole("button", { name: "Выбрать месяц" }).click();
+  await page.locator(".mp").waitFor({ timeout: 5000 });
+  check("месяц: в панели нет дней", (await page.locator(".mp__month").count()) === 12);
+  check("месяц: следующий год недоступен", await page.getByRole("button", { name: "Следующий год" }).isDisabled());
+  const now = new Date();
+  const futureCount = 12 - (now.getMonth() + 1);
+  check("месяц: будущие месяцы недоступны", (await page.locator(".mp__month:disabled").count()) === futureCount);
+  await page.locator(".mp__year").fill("1990");
+  await page.waitForTimeout(200);
+  check("месяц: 1990 — нижняя граница", await page.getByRole("button", { name: "Предыдущий год" }).isDisabled());
+  check("месяц: в 1990 доступны все месяцы", (await page.locator(".mp__month:not(:disabled)").count()) === 12);
+  await page.locator(".mp__year").fill("2005");
+  await page.waitForTimeout(200);
+  await shot(page, "01a-month-picker");
+  await page.locator(".mp__month", { hasText: /^май$/i }).click();
+  await page.waitForTimeout(300);
+  check("месяц: панель закрылась после выбора", (await page.locator(".mp").count()) === 0);
+  check("месяц: выбран май 2005", (await monthInput.inputValue()) === "Май 2005");
+  await monthInput.fill("13.2026");
+  await monthInput.press("Tab");
+  await page.waitForTimeout(200);
+  check("месяц: неверный ввод показывает ошибку", (await page.locator(".forecast-panel .field__error:not([hidden])").count()) === 1);
+  await monthInput.fill("07.1998");
+  await monthInput.press("Tab");
+  await page.waitForTimeout(200);
+  check("месяц: ручной ввод 07.1998", (await monthInput.inputValue()) === "Июль 1998");
   check(
     "карта: статус деморежима",
     await page.getByText("Демонстрационный режим", { exact: true }).count() === 1,
@@ -149,6 +172,7 @@ async function scenario(browser) {
   await page.getByRole("button", { name: "Спрогнозировать" }).click();
   await page.getByRole("heading", { name: "Результаты прогноза" }).waitFor({ timeout: 30000 });
   check("прогноз: открылись результаты", true);
+  check("прогноз: период начинается 01.07.1998", (await page.getByText(/01\.07\.1998/).count()) >= 1);
 
   // ── Результаты ─────────────────────────────────────────────────────
   check(
@@ -245,9 +269,14 @@ async function scenario(browser) {
   check("сорта: переименование", true);
   await shot(page, "07b-renamed");
 
-  await page.getByText(renamed).first().click();
-  await page.getByRole("button", { name: "Удалить", exact: true }).click();
-  await page.getByRole("button", { name: "Удалить сорт" }).click();
+  // Запись после сохранения остаётся выбранной, панель сведений открыта —
+  // повторный клик по имени снял бы выбор и спрятал кнопку «Удалить».
+  const deleteButton = page.getByRole("button", { name: "Удалить", exact: true });
+  if ((await deleteButton.count()) === 0) await page.getByText(renamed).first().click();
+  await deleteButton.click();
+  const confirm = page.getByRole("dialog");
+  await confirm.waitFor({ timeout: 5000 });
+  await confirm.getByRole("button", { name: "Удалить сорт" }).click();
   await page.waitForFunction((name) => !document.body.textContent.includes(name), renamed, { timeout: 10000 });
   check("сорта: удаление", true);
   await shot(page, "08-varieties");

@@ -1,14 +1,12 @@
 /**
- * Географические слои: страны и административные регионы России.
+ * Географические слои: границы стран и регионов России поверх спутника.
  *
  * Данные лежат локально (src/assets/geo), подготавливаются скриптом
  * npm run prepare:assets. Сеть для них не нужна.
  *
- * Разделение действий (см. ТЗ):
- *   • клик по стране или свободной поверхности — выбор прогнозной точки;
- *   • клик по региону на масштабе 4–6 — приближение региона + спутник,
- *     выбор точки при этом НЕ выполняется;
- *   • Esc — возврат предыдущего вида и слоя.
+ * Слои только подсказывают, где что находится (светлые границы + название
+ * при наведении). Клик по ним ничем не отличается от клика по свободной
+ * поверхности карты — события всплывают до карты, и точка выбирается там.
  */
 
 import L from "leaflet";
@@ -20,11 +18,16 @@ export const GEO_SOURCES = Object.freeze({
 
 export const GEO_MANIFEST_URL = new URL("../../assets/geo/manifest.json", import.meta.url).href;
 
-/** Максимальный масштаб, на котором клик по региону означает «приблизить регион». */
-export const REGION_ZOOM_MIN = 4;
-export const REGION_CLICK_MAX_ZOOM = 6;
+/** С этого масштаба поверх стран показываются регионы России. */
+export const REGION_MIN_ZOOM = 4;
 
-const ACCENT = "#16834a";
+const LINE = "#ffffff";
+
+const COUNTRY_STYLE = Object.freeze({ color: LINE, weight: 1.1, opacity: 0.6, fillColor: LINE, fillOpacity: 0 });
+const COUNTRY_HOVER = Object.freeze({ weight: 1.8, opacity: 0.95, fillOpacity: 0.07 });
+
+const REGION_STYLE = Object.freeze({ color: LINE, weight: 0.8, opacity: 0.5, fillColor: LINE, fillOpacity: 0 });
+const REGION_HOVER = Object.freeze({ weight: 1.6, opacity: 0.95, fillOpacity: 0.08 });
 
 const cache = new Map();
 
@@ -76,103 +79,79 @@ function tipNode(text) {
   return node;
 }
 
-export function createCountryLayer({ onCountryClick, visible = true } = {}) {
-  const layer = L.geoJSON(null, {
+/**
+ * Контур, пересекающий 180-й меридиан (Россия, Фиджи, Антарктида в Natural
+ * Earth), Leaflet рисует одной линией через весь мир. Такое кольцо режется
+ * на два: восточное (…180) и западное (−180…).
+ */
+function splitAntimeridian(feature) {
+  const geometry = feature?.geometry;
+  if (!geometry) return feature;
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : null;
+  if (!polygons) return feature;
+
+  let touched = false;
+  const out = [];
+  for (const polygon of polygons) {
+    const ring = polygon[0] ?? [];
+    const crosses = ring.some((point, index) => index > 0 && Math.abs(point[0] - ring[index - 1][0]) > 180);
+    if (!crosses) {
+      out.push(polygon);
+      continue;
+    }
+    touched = true;
+    const east = [];
+    const west = [];
+    for (const [lng, lat] of ring) {
+      if (lng >= 0) east.push([lng, lat]);
+      else west.push([lng, lat]);
+    }
+    for (const part of [east, west]) {
+      if (part.length < 3) continue;
+      const first = part[0];
+      const last = part[part.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) part.push([first[0], first[1]]);
+      out.push([part]);
+    }
+  }
+  if (!touched) return feature;
+  return { ...feature, geometry: { type: "MultiPolygon", coordinates: out } };
+}
+
+function boundaryLayer(baseStyle, hoverStyle) {
+  return L.geoJSON(null, {
     interactive: true,
-    bubblingMouseEvents: false,
+    // События всплывают до карты: клик по границе — это клик по карте (выбор точки),
+    // двойной клик — приближение, как и везде.
+    bubblingMouseEvents: true,
     smoothFactor: 0.6,
-    style: () => ({
-      color: ACCENT,
-      weight: 1,
-      opacity: visible ? 0.45 : 0,
-      fillColor: ACCENT,
-      fillOpacity: 0,
-    }),
+    style: () => ({ ...baseStyle }),
     onEachFeature(feature, featureLayer) {
       const name = nameOf(feature);
       if (name) featureLayer.bindTooltip(tipNode(name), { sticky: true, direction: "top", className: "geo-tip", opacity: 1 });
-
       featureLayer.on({
-        mouseover: (event) => {
-          event.target.setStyle({ fillOpacity: 0.08, weight: 1.6, opacity: 0.8 });
-          // Без bringToFront: вынесенная наверх страна перекрыла бы слой
-          // регионов России и клики по регионам перестали бы работать.
-        },
-        mouseout: (event) => {
-          event.target.setStyle({ fillOpacity: 0, weight: 1, opacity: visible ? 0.45 : 0 });
-        },
-        click: (event) => {
-          onCountryClick?.(event);
-        },
+        mouseover: (event) => event.target.setStyle({ ...hoverStyle }),
+        mouseout: (event) => event.target.setStyle({ ...baseStyle }),
       });
     },
   });
+}
+
+function withSplitFeatures(layer) {
+  const addData = layer.addData.bind(layer);
+  layer.addData = (geojson) => {
+    if (geojson && Array.isArray(geojson.features)) {
+      return addData({ ...geojson, features: geojson.features.map(splitAntimeridian) });
+    }
+    return addData(geojson);
+  };
   return layer;
 }
 
-export function createRegionLayer({ onRegionClick, onRegionHover } = {}) {
-  let selectedLayer = null;
+export function createCountryLayer() {
+  return withSplitFeatures(boundaryLayer(COUNTRY_STYLE, COUNTRY_HOVER));
+}
 
-  const layer = L.geoJSON(null, {
-    interactive: true,
-    // Свойство слоя + явная остановка события в обработчике: клик по региону
-    // не «просыпается» как клик по карте.
-    bubblingMouseEvents: false,
-    smoothFactor: 0.5,
-    style: () => ({
-      color: ACCENT,
-      weight: 0.9,
-      opacity: 0.6,
-      fillColor: ACCENT,
-      fillOpacity: 0.02,
-    }),
-    onEachFeature(feature, featureLayer) {
-      const name = nameOf(feature);
-      if (name) featureLayer.bindTooltip(tipNode(name), { sticky: true, direction: "top", className: "geo-tip", opacity: 1 });
-
-      featureLayer.on({
-        mouseover: (event) => {
-          const isSelected = event.target === selectedLayer;
-          event.target.setStyle({
-            fillOpacity: isSelected ? 0.14 : 0.08,
-            weight: 1.8,
-            opacity: 0.95,
-          });
-          event.target.bringToFront?.();
-          onRegionHover?.(name);
-        },
-        mouseout: (event) => {
-          const isSelected = event.target === selectedLayer;
-          event.target.setStyle({
-            fillOpacity: isSelected ? 0.14 : 0.02,
-            weight: 0.9,
-            opacity: 0.6,
-          });
-        },
-        click: (event) => {
-          const handled = onRegionClick?.(featureLayer, event);
-          // Клик по региону не должен «просочиться» в обработчик выбора точки.
-          if (handled !== false) {
-            L.DomEvent.stopPropagation(event.originalEvent);
-            if (event.originalEvent) event.originalEvent.stopPropagation();
-          }
-        },
-      });
-    },
-  });
-
-  return {
-    layer,
-    markSelected(featureLayer) {
-      if (selectedLayer && selectedLayer !== featureLayer) {
-        selectedLayer.setStyle({ fillOpacity: 0.02, weight: 0.9, opacity: 0.6 });
-      }
-      selectedLayer = featureLayer ?? null;
-      if (selectedLayer) selectedLayer.setStyle({ fillOpacity: 0.14, weight: 1.8, opacity: 0.95 });
-    },
-    clearSelected() {
-      if (selectedLayer) selectedLayer.setStyle({ fillOpacity: 0.02, weight: 0.9, opacity: 0.6 });
-      selectedLayer = null;
-    },
-  };
+export function createRegionLayer() {
+  return withSplitFeatures(boundaryLayer(REGION_STYLE, REGION_HOVER));
 }
