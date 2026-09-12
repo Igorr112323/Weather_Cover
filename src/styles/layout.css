@@ -101,32 +101,9 @@
   color: var(--green);
 }
 
-.sidebar__foot {
-  margin-top: auto;
-  padding: var(--sp-3) var(--sp-4);
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar__version {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-muted);
-  font-variant-numeric: var(--tabular);
-}
-
-.sidebar__mode {
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--text-muted);
-}
-
 /* Узкий режим: только иконки с подсказками */
 .shell--narrow .sidebar__names,
-.shell--narrow .nav-item__label,
-.shell--narrow .sidebar__mode {
+.shell--narrow .nav-item__label {
   display: none;
 }
 
@@ -138,11 +115,6 @@
 .shell--narrow .nav-item {
   justify-content: center;
   padding: 0;
-}
-
-.shell--narrow .sidebar__foot {
-  align-items: center;
-  padding: var(--sp-3) var(--sp-2);
 }
 
 /* ── Рабочая область ────────────────────────────────────────── */

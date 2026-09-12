@@ -46,6 +46,7 @@ Production-режим Electron: `npm run build`, затем `npm start`
 | `npm install` | Установка зависимостей |
 | `npm run prepare:assets` | Копирование иконок Lucide из npm-пакета и подготовка GeoJSON (страны + регионы России). Флаги: `--icons`, `--geo`, `--offline`. Без сети оставляет ранее подготовленные файлы |
 | `npm run icon` | Растеризация иконки (sharp, локально): PNG 16–512 и ICO 16/32/48/256 в `build/` |
+| `npm run splash` | Заставка portable EXE `build/splash.bmp` — снимок `dist/splash.html` (нужны `npm run build` и Playwright Chromium); результат коммитится |
 | `npm run dev` | Dev-сервер Vite на `0.0.0.0:5173` (браузерная разработка и предпросмотр) |
 | `npm run preview` | Раздача собранного `dist/` на `0.0.0.0:4173` (production-предпросмотр) |
 | `npm start` | Запуск Electron (production — из `dist/`, dev — из `AGRO_DEV_SERVER`) |
@@ -194,8 +195,8 @@ Production отдаётся привилегированным протокол�
 electron/        main / preload / файловое хранилище / CSP
 src/             renderer: страницы, компоненты, сервисы, стили
 calculations/    демодвижок (точка замены) + календарная арифметика
-scripts/        prepare-assets, сборка иконки, dev/preview-серверы
-build/          иконка для сборки (генерируется npm run icon)
+scripts/        prepare-assets, сборка иконки и заставки, dev/preview-серверы
+build/          иконка (npm run icon) и заставка portable EXE (npm run splash)
 tests/          unit-тесты + Playwright smoke
 .github/        CI: тесты, smoke, Windows portable EXE
 ```

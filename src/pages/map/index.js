@@ -3,7 +3,7 @@
  *
  * Сценарий намеренно простой: спутниковая карта, клик в любом месте ставит
  * точку (второй клик — переносит), справа — сорт, период и месяц начала.
- * Границы стран и регионов только подсказывают, где что находится.
+ * Тонкие контуры стран только подсказывают, где что находится.
  * Состояние (центр, масштаб, точка, сорт, месяц, период) переживает
  * переходы между вкладками и перезапуск приложения.
  */
@@ -18,11 +18,11 @@ import { monthRange, normalizeStartMonth } from "../../../calculations/month-ran
 import { debounce } from "../../lib/async.js";
 import { createSegmented, createButton } from "../../components/button.js";
 import { createMonthField, fmtMonthRu } from "../../components/month-picker.js";
-import { createBadge, createNote } from "../../components/panel.js";
+import { createNote } from "../../components/panel.js";
 import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
 import { DEFAULT_BASEMAP, createBasemap, watchTiles } from "./basemaps.js";
-import { createCountryLayer, createRegionLayer, loadGeoData, REGION_MIN_ZOOM } from "./geo-layers.js";
+import { createCountryLayer, loadGeoData } from "./geo-layers.js";
 import { runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
@@ -37,7 +37,6 @@ export function createMapPage(context = {}) {
   let tileLayer = null;
   let tileWatch = null;
   let countryLayer = null;
-  let regionLayer = null;
   let marker = null;
   let resizeObserver = null;
   let unsubscribe = null;
@@ -114,7 +113,6 @@ export function createMapPage(context = {}) {
     monthField,
     errorHost,
     runButton,
-    h("div", { class: "forecast-panel__row" }, [createBadge("Демонстрационный режим", { tone: "warning", iconName: "flask-conical" })]),
     progressHost,
   ]);
 
@@ -135,7 +133,6 @@ export function createMapPage(context = {}) {
   ]);
 
   const saveStateSoon = debounce(() => saveState(), 1200);
-  const syncRegionViewSoon = debounce(() => syncRegionVisibility(), 100);
 
   function prefersReducedMotion() {
     return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -168,12 +165,10 @@ export function createMapPage(context = {}) {
     setBasemap();
 
     // Единственное действие на карте: клик ставит (или переносит) точку.
-    // Клики по границам стран и регионов всплывают сюда же.
+    // Контуры стран мышь не перехватывают, поэтому клик внутри любой страны
+    // приходит сюда же.
     map.on("click", (event) => selectPoint(event.latlng.lat, event.latlng.lng));
-    map.on("moveend zoomend", () => {
-      syncRegionViewSoon();
-      saveStateSoon();
-    });
+    map.on("moveend zoomend", () => saveStateSoon());
 
     void loadGeo();
 
@@ -204,23 +199,9 @@ export function createMapPage(context = {}) {
       countryLayer.addTo(map);
     }
 
-    if (data.regions) {
-      regionLayer = createRegionLayer();
-      regionLayer.addData(data.regions);
-      syncRegionVisibility();
-    }
-
     if (data.missing) {
-      hintsHost.append(h("p", { class: "forecast-panel__hint", text: "Границы стран и регионов недоступны — точка выбирается кликом по карте." }));
+      hintsHost.append(h("p", { class: "forecast-panel__hint", text: "Границы стран недоступны — точка выбирается кликом по карте." }));
     }
-  }
-
-  function syncRegionVisibility() {
-    if (!map || !regionLayer) return;
-    const shouldShow = map.getZoom() >= REGION_MIN_ZOOM;
-    const present = map.hasLayer(regionLayer);
-    if (shouldShow && !present) regionLayer.addTo(map);
-    if (!shouldShow && present) map.removeLayer(regionLayer);
   }
 
   function resetView() {
@@ -525,7 +506,6 @@ export function createMapPage(context = {}) {
 
     varietyId = typeof saved.varietyId === "string" ? saved.varietyId : null;
     syncVarieties();
-    syncRegionVisibility();
   }
 
   /* ── Жизненный цикл страницы ──────────────────────────────────────────── */
@@ -575,7 +555,6 @@ export function createMapPage(context = {}) {
       map = null;
       marker = null;
       countryLayer = null;
-      regionLayer = null;
     },
     setError(error) {
       showFieldError(error?.message ?? "Не удалось открыть карту");

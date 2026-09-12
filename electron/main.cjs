@@ -9,7 +9,10 @@
  *     только ссылки из allowlist (атрибуция источников карт);
  *   - запросы разрешений (геолокация, камера, уведомления…) отклоняются;
  *   - renderer получает узкий API из preload.cjs: чтение/запись базы,
- *     сохранение копии и запись файла выгрузки.
+ *     сохранение копии, запись файла выгрузки и сигнал «интерфейс готов».
+ *
+ * Запуск: сначала открывается экран загрузки (splash.html), главное окно
+ * создаётся скрытым и показывается, когда renderer построил интерфейс.
  *
  * ASAR — это упаковка, а не криптографическая защита исходников.
  */
@@ -27,6 +30,16 @@ const PROTOCOL_NAME = "app";
 const PROTOCOL_HOST = "agroprognoz.local";
 const DB_FILE_NAME = "agroprognoz.sqlite";
 const FLUSH_TIMEOUT_MS = 1500;
+
+/** Экран загрузки: размер окна совпадает с build/splash.bmp portable-сборки. */
+const SPLASH_SIZE = Object.freeze({ width: 440, height: 280 });
+/**
+ * Страховка экрана загрузки: если renderer не сообщил о готовности (сбой при
+ * запуске), главное окно всё равно откроется — через 8 с после первой
+ * отрисовки или через 20 с после создания окна.
+ */
+const REVEAL_AFTER_PAINT_MS = 8000;
+const REVEAL_HARD_LIMIT_MS = 20000;
 
 const ROOT = path.resolve(__dirname, "..");
 const DIST_DIR = path.join(ROOT, "dist");
@@ -53,6 +66,8 @@ const MIME_TYPES = new Map([
 ]);
 
 let mainWindow = null;
+let splashWindow = null;
+let mainRevealed = false;
 let fileStore = null;
 let closePhase = false;
 
@@ -174,6 +189,70 @@ function openExternalIfAllowed(url) {
   }
 }
 
+function pageUrl(fileName) {
+  return isDev ? `${DEV_SERVER_URL}/${fileName}` : `${PROTOCOL_NAME}://${PROTOCOL_HOST}/${fileName}`;
+}
+
+/**
+ * Экран загрузки: небольшое окно без рамки со страницей splash.html.
+ * Появляется сразу после старта Electron и закрывается, когда главное окно
+ * построило интерфейс (сигнал agro:app-ready из renderer'а).
+ */
+function createSplashWindow() {
+  const icon = iconPath();
+  const win = new BrowserWindow({
+    width: SPLASH_SIZE.width,
+    height: SPLASH_SIZE.height,
+    useContentSize: true,
+    center: true,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    title: "АгроПрогноз — Кукуруза",
+    backgroundColor: "#f4f7f4",
+    icon: icon ? nativeImage.createFromPath(icon) : undefined,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: false,
+      spellcheck: false,
+      devTools: false,
+    },
+  });
+
+  win.setMenuBarVisibility(false);
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed() && !mainRevealed) win.show();
+  });
+  win.on("closed", () => {
+    if (splashWindow === win) splashWindow = null;
+  });
+
+  void win.loadURL(pageUrl("splash.html"));
+  splashWindow = win;
+  return win;
+}
+
+/** Показывает главное окно и убирает экран загрузки (ровно один раз). */
+function revealMainWindow() {
+  if (mainRevealed) return;
+  mainRevealed = true;
+
+  const win = mainWindow;
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+  }
+
+  const splash = splashWindow;
+  splashWindow = null;
+  if (splash && !splash.isDestroyed()) splash.destroy();
+}
+
 function createWindow() {
   const icon = iconPath();
   const win = new BrowserWindow({
@@ -197,13 +276,24 @@ function createWindow() {
     },
   });
 
-  win.once("ready-to-show", () => win.show());
+  // Окно открывается по сигналу agro:app-ready, когда интерфейс уже построен, —
+  // до этого человек видит экран загрузки, а не пустое окно. Страховка на случай
+  // сбоя при запуске: таймер после первой отрисовки и ошибки загрузки страницы.
+  win.once("ready-to-show", () => {
+    setTimeout(() => revealMainWindow(), REVEAL_AFTER_PAINT_MS);
+  });
+  setTimeout(() => revealMainWindow(), REVEAL_HARD_LIMIT_MS);
+  win.webContents.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
+    // −3 (ABORTED) — отменённая навигация, не ошибка страницы
+    if (isMainFrame && errorCode !== -3) revealMainWindow();
+  });
+  win.webContents.on("render-process-gone", () => revealMainWindow());
 
   if (isDev) {
     win.webContents.openDevTools({ mode: "detach" });
     void win.loadURL(DEV_SERVER_URL);
   } else {
-    void win.loadURL(`${PROTOCOL_NAME}://${PROTOCOL_HOST}/index.html`);
+    void win.loadURL(pageUrl("index.html"));
   }
 
   // Перед закрытием даём renderer'у дописать данные на диск
@@ -234,6 +324,10 @@ function createWindow() {
 /* ── IPC: только операции хранения и экспорта ────────────────────────────── */
 
 function registerIpc() {
+  ipcMain.on("agro:app-ready", (event) => {
+    if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) revealMainWindow();
+  });
+
   ipcMain.handle("agro:get-app-info", () => ({
     ok: true,
     version: app.getVersion(),
@@ -351,10 +445,16 @@ if (!gotLock) {
       );
     }
 
+    // Сначала экран загрузки (лёгкий, появляется сразу), затем главное окно.
+    createSplashWindow();
     createWindow();
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) {
+        mainRevealed = false;
+        createSplashWindow();
+        createWindow();
+      }
     });
   });
 

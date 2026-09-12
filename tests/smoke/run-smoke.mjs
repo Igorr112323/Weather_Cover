@@ -97,7 +97,7 @@ async function scenario(browser) {
   for (const item of ["Карта", "Данные", "Отчёты", "Сорта кукурузы"]) {
     check(`оболочка: пункт «${item}»`, (await sidebar.getByRole("button", { name: item }).count()) === 1);
   }
-  check("оболочка: версия", await page.getByText(/Версия \d+\.\d+\.\d+/).count() === 1);
+  check("оболочка: без служебных подписей", (await page.getByText(/Версия \d+\.\d+\.\d+|Файл профиля|IndexedDB/).count()) === 0);
 
   // ── Карта: точка, сорт, прогноз ────────────────────────────────────
   await page.locator(".leaflet-container").first().waitFor({ timeout: 30000 });
@@ -152,10 +152,7 @@ async function scenario(browser) {
   await monthInput.press("Tab");
   await page.waitForTimeout(200);
   check("месяц: ручной ввод 07.1998", (await monthInput.inputValue()) === "Июль 1998");
-  check(
-    "карта: статус деморежима",
-    await page.getByText("Демонстрационный режим", { exact: true }).count() === 1,
-  );
+  check("карта: без бейджа деморежима", (await page.getByText("Демонстрационный режим", { exact: true }).count()) === 0);
   await shot(page, "01-map");
 
   const varietySelect = page.locator(".forecast-panel select").first();

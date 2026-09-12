@@ -1,33 +1,26 @@
 /**
- * Географические слои: границы стран и регионов России поверх спутника.
+ * Географический слой: границы стран поверх спутника.
  *
  * Данные лежат локально (src/assets/geo), подготавливаются скриптом
  * npm run prepare:assets. Сеть для них не нужна.
  *
- * Слои только подсказывают, где что находится (светлые границы + название
- * при наведении). Клик по ним ничем не отличается от клика по свободной
- * поверхности карты — события всплывают до карты, и точка выбирается там.
+ * Слой только подсказывает, где что находится: тонкие светлые контуры без
+ * подсветки, подписей и реакции на мышь (interactive: false). Клик в любом
+ * месте — в том числе внутри России — это клик по карте, и точка выбирается
+ * там. Границы регионов не рисуются: для выбора точки они не нужны.
  */
 
 import L from "leaflet";
 
 export const GEO_SOURCES = Object.freeze({
   countries: new URL("../../assets/geo/countries.geojson", import.meta.url).href,
-  russiaRegions: new URL("../../assets/geo/russia-admin1.geojson", import.meta.url).href,
 });
 
 export const GEO_MANIFEST_URL = new URL("../../assets/geo/manifest.json", import.meta.url).href;
 
-/** С этого масштаба поверх стран показываются регионы России. */
-export const REGION_MIN_ZOOM = 4;
-
 const LINE = "#ffffff";
 
-const COUNTRY_STYLE = Object.freeze({ color: LINE, weight: 1.1, opacity: 0.6, fillColor: LINE, fillOpacity: 0 });
-const COUNTRY_HOVER = Object.freeze({ weight: 1.8, opacity: 0.95, fillOpacity: 0.07 });
-
-const REGION_STYLE = Object.freeze({ color: LINE, weight: 0.8, opacity: 0.5, fillColor: LINE, fillOpacity: 0 });
-const REGION_HOVER = Object.freeze({ weight: 1.6, opacity: 0.95, fillOpacity: 0.08 });
+const COUNTRY_STYLE = Object.freeze({ color: LINE, weight: 1.1, opacity: 0.6, fill: false });
 
 const cache = new Map();
 
@@ -56,27 +49,13 @@ async function fetchJson(url, { timeoutMs = 10000 } = {}) {
 }
 
 export function loadGeoData() {
-  return Promise.all([
-    fetchJson(GEO_SOURCES.countries).catch(() => null),
-    fetchJson(GEO_SOURCES.russiaRegions).catch(() => null),
-  ]).then(([countries, regions]) => ({ countries, regions, missing: !countries || !regions }));
+  return fetchJson(GEO_SOURCES.countries)
+    .catch(() => null)
+    .then((countries) => ({ countries, missing: !countries }));
 }
 
 export function loadGeoManifest() {
   return fetchJson(GEO_MANIFEST_URL).catch(() => null);
-}
-
-function nameOf(feature) {
-  const properties = feature?.properties ?? {};
-  const candidate = properties.name ?? properties.NAME ?? properties.admin ?? properties.ADMIN ?? "";
-  return typeof candidate === "string" ? candidate.slice(0, 120) : "";
-}
-
-/** Тултип создаётся узлом с textContent: имена из GeoJSON не попадают в innerHTML. */
-function tipNode(text) {
-  const node = document.createElement("div");
-  node.textContent = text;
-  return node;
 }
 
 /**
@@ -118,22 +97,12 @@ function splitAntimeridian(feature) {
   return { ...feature, geometry: { type: "MultiPolygon", coordinates: out } };
 }
 
-function boundaryLayer(baseStyle, hoverStyle) {
+function boundaryLayer(baseStyle) {
   return L.geoJSON(null, {
-    interactive: true,
-    // События всплывают до карты: клик по границе — это клик по карте (выбор точки),
-    // двойной клик — приближение, как и везде.
-    bubblingMouseEvents: true,
+    // Контуры — только подложка-ориентир: без реакции на наведение и клики.
+    interactive: false,
     smoothFactor: 0.6,
     style: () => ({ ...baseStyle }),
-    onEachFeature(feature, featureLayer) {
-      const name = nameOf(feature);
-      if (name) featureLayer.bindTooltip(tipNode(name), { sticky: true, direction: "top", className: "geo-tip", opacity: 1 });
-      featureLayer.on({
-        mouseover: (event) => event.target.setStyle({ ...hoverStyle }),
-        mouseout: (event) => event.target.setStyle({ ...baseStyle }),
-      });
-    },
   });
 }
 
@@ -149,9 +118,5 @@ function withSplitFeatures(layer) {
 }
 
 export function createCountryLayer() {
-  return withSplitFeatures(boundaryLayer(COUNTRY_STYLE, COUNTRY_HOVER));
-}
-
-export function createRegionLayer() {
-  return withSplitFeatures(boundaryLayer(REGION_STYLE, REGION_HOVER));
+  return withSplitFeatures(boundaryLayer(COUNTRY_STYLE));
 }
