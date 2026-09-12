@@ -57,7 +57,6 @@ const LUCIDE_ICONS = [
   "layers",
   "line-chart",
   "list",
-  "locate",
   "map",
   "map-pin",
   "minus",

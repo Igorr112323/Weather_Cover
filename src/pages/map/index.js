@@ -5,6 +5,7 @@
  * точку (второй клик — переносит), справа — сорт, период и месяц начала.
  * Мир показывается одной копией: минимальный масштаб подбирается под размер
  * окна так, чтобы снимок закрывал всю карту, а за край (±180°) уехать нельзя.
+ * Максимальный масштаб ограничен уровнем, где снимки ещё есть (см. basemaps.js).
  * Состояние (центр, масштаб, точка, сорт, месяц, период) переживает
  * переходы между вкладками и перезапуск приложения.
  */
@@ -22,14 +23,13 @@ import { createMonthField, fmtMonthRu } from "../../components/month-picker.js";
 import { createNote } from "../../components/panel.js";
 import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
-import { DEFAULT_BASEMAP, WORLD_BOUNDS, createBasemap, watchTiles } from "./basemaps.js";
+import { DEFAULT_BASEMAP, MAX_ZOOM, WORLD_BOUNDS, createBasemap, watchTiles } from "./basemaps.js";
 import { runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
 import { toast } from "../../components/toast.js";
 
 const POINT_PLACEHOLDER = "Нажмите на карту, чтобы выбрать поле";
-const MAX_ZOOM = 19;
 /** Ниже этого масштаба не уходим даже в очень узком окне. */
 const ABS_MIN_ZOOM = 2;
 const TILE_SIZE = 256;
@@ -101,14 +101,8 @@ export function createMapPage(context = {}) {
   const errorHost = h("div");
   const hintsHost = h("div", { style: "display:flex;flex-direction:column;gap:8px" });
 
-  const resetButton = h(
-    "button",
-    { type: "button", class: "btn-icon", "aria-label": "Показать всю карту", title: "Показать всю карту", onclick: () => resetView() },
-    [icon("locate", { size: 16 })],
-  );
-
   const panel = h("section", { class: "forecast-panel", "aria-label": "Параметры прогноза" }, [
-    h("div", { class: "forecast-panel__head" }, [h("h2", { class: "forecast-panel__title", text: "Прогноз" }), resetButton]),
+    h("div", { class: "forecast-panel__head" }, [h("h2", { class: "forecast-panel__title", text: "Прогноз" })]),
     coordsField,
     hintsHost,
     varietySelect,
@@ -161,6 +155,9 @@ export function createMapPage(context = {}) {
       worldCopyJump: false,
       maxBounds: WORLD_BOUNDS,
       maxBoundsViscosity: 1,
+      // Щипок на тачпаде не «перелетает» за предельный масштаб: иначе слой
+      // на мгновение снимает все тайлы, и карта мигает пустотой.
+      bounceAtZoomLimits: false,
     });
 
     setBasemap();
@@ -211,13 +208,6 @@ export function createMapPage(context = {}) {
 
   function clampZoom(value, minZoom = map?.getMinZoom() ?? minZoomFor(container)) {
     return Math.min(MAX_ZOOM, Math.max(minZoom, Math.round(Number(value))));
-  }
-
-  function resetView() {
-    if (!map) return;
-    map.flyTo([MAP_DEFAULTS.center.lat, MAP_DEFAULTS.center.lng], clampZoom(MAP_DEFAULTS.zoom), {
-      duration: prefersReducedMotion() ? 0 : 0.45,
-    });
   }
 
   /* ── Точка и маркер ───────────────────────────────────────────────────── */
