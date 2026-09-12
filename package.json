@@ -1,7 +1,7 @@
 {
   "name": "agroprognoz-corn",
   "productName": "AgroPrognoz",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "type": "module",
   "description": "АгроПрогноз — Кукуруза: выбор территории, параметры прогноза и погодные показатели для выращивания кукурузы.",
@@ -21,7 +21,7 @@
     "build": "vite build",
     "test": "node --test tests/date-period.test.mjs tests/month-input.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs",
     "test:smoke": "node tests/smoke/run-smoke.mjs",
-    "dist:win": "electron-builder --win portable"
+    "dist:win": "node scripts/patch-portable-nsi.mjs && electron-builder --win portable"
   },
   "dependencies": {
     "@fontsource/inter": "5.3.0",

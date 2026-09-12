@@ -13,13 +13,16 @@
  *
  * Запуск: сначала открывается экран загрузки (splash.html), главное окно
  * создаётся скрытым и показывается, когда renderer построил интерфейс.
+ * В portable-сборке до этого момента на экране заставка NSIS (build/splash.bmp):
+ * она убирается только после появления первого окна приложения — см.
+ * markSplashHandoff() и scripts/patch-portable-nsi.mjs.
  *
  * ASAR — это упаковка, а не криптографическая защита исходников.
  */
 
 "use strict";
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, protocol, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, protocol, screen, session, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -40,6 +43,23 @@ const SPLASH_SIZE = Object.freeze({ width: 440, height: 280 });
  */
 const REVEAL_AFTER_PAINT_MS = 8000;
 const REVEAL_HARD_LIMIT_MS = 20000;
+/** Экран загрузки показывается после первого кадра со шрифтами; предел ожидания шрифтов. */
+const SPLASH_FONTS_TIMEOUT_MS = 1000;
+/** Экран загрузки закрывается чуть позже показа главного окна, чтобы между ними не было пустого кадра. */
+const SPLASH_CLOSE_DELAY_MS = 250;
+/**
+ * Portable-сборка: NSIS держит заставку build/splash.bmp, пока приложение не
+ * создаст файл по этому пути. Переменную задаёт NSIS перед запуском
+ * (scripts/patch-portable-nsi.mjs); вне portable-сборки она пуста.
+ */
+const SPLASH_HANDOFF_FILE = String(process.env.AGRO_SPLASH_HANDOFF_FILE ?? "");
+/** Ждём в странице заставки загрузки шрифтов и два кадра — окно откроется уже отрисованным. */
+const SPLASH_PAINTED_SCRIPT = `new Promise((resolve) => {
+  const done = () => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+  const fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  fonts.then(done, done);
+  setTimeout(() => resolve(true), 600);
+})`;
 
 const ROOT = path.resolve(__dirname, "..");
 const DIST_DIR = path.join(ROOT, "dist");
@@ -68,6 +88,7 @@ const MIME_TYPES = new Map([
 let mainWindow = null;
 let splashWindow = null;
 let mainRevealed = false;
+let splashHandoffDone = false;
 let fileStore = null;
 let closePhase = false;
 
@@ -194,17 +215,50 @@ function pageUrl(fileName) {
 }
 
 /**
+ * Первое окно приложения на экране: сообщаем об этом заставке NSIS
+ * (portable-сборка), и она убирает build/splash.bmp — окно уже перекрывает его.
+ */
+function markSplashHandoff() {
+  if (splashHandoffDone || !SPLASH_HANDOFF_FILE) return;
+  splashHandoffDone = true;
+  try {
+    // Синхронно: вызывается и перед немедленным выходом (вторая копия приложения).
+    fs.writeFileSync(SPLASH_HANDOFF_FILE, String(Date.now()));
+  } catch (error) {
+    log("splash-handoff:", error?.code ?? error?.message);
+  }
+}
+
+/**
+ * Позиция экрана загрузки — центр основного экрана целиком (не рабочей
+ * области): ровно там заставку рисует NSIS в portable-сборке, поэтому окно
+ * Electron появляется точно поверх неё.
+ */
+function splashPosition() {
+  try {
+    const { bounds } = screen.getPrimaryDisplay();
+    return {
+      x: Math.round(bounds.x + (bounds.width - SPLASH_SIZE.width) / 2),
+      y: Math.round(bounds.y + (bounds.height - SPLASH_SIZE.height) / 2),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Экран загрузки: небольшое окно без рамки со страницей splash.html.
- * Появляется сразу после старта Electron и закрывается, когда главное окно
- * построило интерфейс (сигнал agro:app-ready из renderer'а).
+ * Появляется, как только страница отрисована (шрифты загружены), и закрывается,
+ * когда главное окно построило интерфейс (сигнал agro:app-ready из renderer'а).
  */
 function createSplashWindow() {
   const icon = iconPath();
+  const position = splashPosition();
   const win = new BrowserWindow({
     width: SPLASH_SIZE.width,
     height: SPLASH_SIZE.height,
     useContentSize: true,
-    center: true,
+    ...(position ?? { center: true }),
     frame: false,
     resizable: false,
     minimizable: false,
@@ -225,8 +279,31 @@ function createSplashWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  win.on("show", markSplashHandoff);
+
+  let shown = false;
+  const show = () => {
+    if (shown || win.isDestroyed() || mainRevealed) return;
+    shown = true;
+    win.show();
+  };
+  // Первый кадр уже есть; дожидаемся ещё шрифтов, чтобы текст не «перерисовывался»
+  // на глазах. Таймер — страховка, если страница не ответила.
   win.once("ready-to-show", () => {
-    if (!win.isDestroyed() && !mainRevealed) win.show();
+    if (win.isDestroyed()) return;
+    const timer = setTimeout(show, SPLASH_FONTS_TIMEOUT_MS);
+    win.webContents
+      .executeJavaScript(SPLASH_PAINTED_SCRIPT, true)
+      .catch(() => null)
+      .then(() => {
+        clearTimeout(timer);
+        show();
+      });
+  });
+  // Страница не загрузилась (повреждена сборка) — окно всё равно показываем:
+  // пустой фон цвета приложения лучше, чем ничего, а главное окно откроется по таймерам.
+  win.webContents.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
+    if (isMainFrame && errorCode !== -3) show();
   });
   win.on("closed", () => {
     if (splashWindow === win) splashWindow = null;
@@ -248,9 +325,15 @@ function revealMainWindow() {
     win.focus();
   }
 
+  // Заставка закрывается, когда главное окно уже на экране: оно больше и
+  // целиком перекрывает её, поэтому смена окон проходит без пустого кадра.
   const splash = splashWindow;
   splashWindow = null;
-  if (splash && !splash.isDestroyed()) splash.destroy();
+  if (splash && !splash.isDestroyed()) {
+    setTimeout(() => {
+      if (!splash.isDestroyed()) splash.destroy();
+    }, SPLASH_CLOSE_DELAY_MS);
+  }
 }
 
 function createWindow() {
@@ -288,6 +371,7 @@ function createWindow() {
     if (isMainFrame && errorCode !== -3) revealMainWindow();
   });
   win.webContents.on("render-process-gone", () => revealMainWindow());
+  win.on("show", markSplashHandoff);
 
   if (isDev) {
     win.webContents.openDevTools({ mode: "detach" });
@@ -401,6 +485,8 @@ function registerIpc() {
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
+  // Приложение уже запущено: заставке portable-сборки ждать нечего.
+  markSplashHandoff();
   app.quit();
 } else {
   app.on("second-instance", () => {

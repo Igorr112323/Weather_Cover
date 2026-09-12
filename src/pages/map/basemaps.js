@@ -10,6 +10,16 @@
 
 import L from "leaflet";
 
+/**
+ * Границы одной копии мира в Web Mercator (широта ограничена проекцией).
+ * Карта не выпускает вид за эти пределы, а слой не запрашивает тайлы
+ * соседних копий — мир на экране ровно один.
+ */
+export const WORLD_BOUNDS = Object.freeze([
+  [-85.0511, -180],
+  [85.0511, 180],
+]);
+
 export const BASEMAPS = Object.freeze({
   satellite: {
     id: "satellite",
@@ -19,6 +29,8 @@ export const BASEMAPS = Object.freeze({
         maxZoom: 19,
         maxNativeZoom: 19,
         keepBuffer: 1,
+        noWrap: true,
+        bounds: WORLD_BOUNDS,
         crossOrigin: true,
         attribution: "Спутниковые снимки &copy; Esri, Maxar, Earthstar Geographics",
       });

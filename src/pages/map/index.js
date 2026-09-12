@@ -3,7 +3,8 @@
  *
  * Сценарий намеренно простой: спутниковая карта, клик в любом месте ставит
  * точку (второй клик — переносит), справа — сорт, период и месяц начала.
- * Тонкие контуры стран только подсказывают, где что находится.
+ * Мир показывается одной копией: минимальный масштаб подбирается под размер
+ * окна так, чтобы снимок закрывал всю карту, а за край (±180°) уехать нельзя.
  * Состояние (центр, масштаб, точка, сорт, месяц, период) переживает
  * переходы между вкладками и перезапуск приложения.
  */
@@ -21,14 +22,17 @@ import { createMonthField, fmtMonthRu } from "../../components/month-picker.js";
 import { createNote } from "../../components/panel.js";
 import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
-import { DEFAULT_BASEMAP, createBasemap, watchTiles } from "./basemaps.js";
-import { createCountryLayer, loadGeoData } from "./geo-layers.js";
+import { DEFAULT_BASEMAP, WORLD_BOUNDS, createBasemap, watchTiles } from "./basemaps.js";
 import { runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
 import { toast } from "../../components/toast.js";
 
 const POINT_PLACEHOLDER = "Нажмите на карту, чтобы выбрать поле";
+const MAX_ZOOM = 19;
+/** Ниже этого масштаба не уходим даже в очень узком окне. */
+const ABS_MIN_ZOOM = 2;
+const TILE_SIZE = 256;
 
 export function createMapPage(context = {}) {
   const { db, navigate, refreshVarieties, state: appState } = context;
@@ -36,7 +40,6 @@ export function createMapPage(context = {}) {
   let map = null;
   let tileLayer = null;
   let tileWatch = null;
-  let countryLayer = null;
   let marker = null;
   let resizeObserver = null;
   let unsubscribe = null;
@@ -117,12 +120,9 @@ export function createMapPage(context = {}) {
   ]);
 
   const container = h("div", { class: "map-canvas" });
-  const zoomControls = h("div", { class: "map-card" }, [
-    h("div", { class: "map-controls__row" }, [
-      h("button", { type: "button", class: "map-btn", "aria-label": "Приблизить", title: "Приблизить", onclick: () => map?.zoomIn() }, [icon("plus", { size: 16 })]),
-      h("button", { type: "button", class: "map-btn", "aria-label": "Отдалить", title: "Отдалить", onclick: () => map?.zoomOut() }, [icon("minus", { size: 16 })]),
-    ]),
-  ]);
+  const zoomInButton = h("button", { type: "button", class: "map-btn", "aria-label": "Приблизить", title: "Приблизить", onclick: () => map?.zoomIn() }, [icon("plus", { size: 16 })]);
+  const zoomOutButton = h("button", { type: "button", class: "map-btn", "aria-label": "Отдалить", title: "Отдалить", onclick: () => map?.zoomOut() }, [icon("minus", { size: 16 })]);
+  const zoomControls = h("div", { class: "map-card" }, [h("div", { class: "map-controls__row" }, [zoomInButton, zoomOutButton])]);
 
   const mapErrorHost = h("div");
   const node = h("div", { class: "map-page" }, [
@@ -143,39 +143,39 @@ export function createMapPage(context = {}) {
   function createMap() {
     const saved = appState?.state.map ?? MAP_DEFAULTS;
     const center = validCenter(saved.center) ? saved.center : MAP_DEFAULTS.center;
-    const zoom = Number.isFinite(saved.zoom) ? clampZoom(saved.zoom) : MAP_DEFAULTS.zoom;
+    const minZoom = minZoomFor(container);
+    const zoom = Number.isFinite(saved.zoom) ? clampZoom(saved.zoom, minZoom) : Math.max(MAP_DEFAULTS.zoom, minZoom);
 
     map = L.map(container, {
       center: [center.lat, center.lng],
       zoom,
-      minZoom: 2,
-      maxZoom: 19,
+      minZoom,
+      maxZoom: MAX_ZOOM,
       zoomControl: false,
       attributionControl: true,
       keyboard: true,
-      worldCopyJump: false,
       fadeAnimation: !prefersReducedMotion(),
       zoomAnimation: !prefersReducedMotion(),
-      maxBounds: [
-        [-85, -200],
-        [85, 200],
-      ],
+      // Одна копия мира: карту нельзя утащить за ±180°, поэтому соседние
+      // копии Евразии и Америки по бокам не появляются.
+      worldCopyJump: false,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1,
     });
 
     setBasemap();
 
     // Единственное действие на карте: клик ставит (или переносит) точку.
-    // Контуры стран мышь не перехватывают, поэтому клик внутри любой страны
-    // приходит сюда же.
     map.on("click", (event) => selectPoint(event.latlng.lat, event.latlng.lng));
     map.on("moveend zoomend", () => saveStateSoon());
-
-    void loadGeo();
+    map.on("zoomend zoomlevelschange", () => syncZoomButtons());
+    syncZoomButtons();
 
     if (typeof ResizeObserver === "function") {
       resizeObserver = new ResizeObserver(() => {
         if (destroyed || !map) return;
         map.invalidateSize({ animate: false });
+        syncMinZoom();
       });
       resizeObserver.observe(container);
     }
@@ -185,28 +185,37 @@ export function createMapPage(context = {}) {
     return center && Number.isFinite(center.lat) && Number.isFinite(center.lng);
   }
 
-  function clampZoom(value) {
-    return Math.min(19, Math.max(2, Math.round(Number(value))));
+  /**
+   * Минимальный масштаб, при котором одна копия мира закрывает контейнер
+   * целиком: сторона мира 256·2^z px должна быть не меньше большей стороны
+   * контейнера. Иначе Leaflet показывал бы соседние копии мира или пустоту.
+   */
+  function minZoomFor(element) {
+    const side = Math.max(element.clientWidth, element.clientHeight, TILE_SIZE);
+    const zoom = Math.ceil(Math.log2(side / TILE_SIZE));
+    return Math.min(MAX_ZOOM, Math.max(ABS_MIN_ZOOM, zoom));
   }
 
-  async function loadGeo() {
-    const data = await loadGeoData();
-    if (destroyed || !map) return;
+  function syncMinZoom() {
+    if (!map) return;
+    const minZoom = minZoomFor(container);
+    // setMinZoom сам приближает карту, если текущий масштаб стал меньше нового минимума.
+    if (map.getMinZoom() !== minZoom) map.setMinZoom(minZoom);
+  }
 
-    if (data.countries) {
-      countryLayer = createCountryLayer();
-      countryLayer.addData(data.countries);
-      countryLayer.addTo(map);
-    }
+  function syncZoomButtons() {
+    if (!map) return;
+    zoomInButton.disabled = map.getZoom() >= map.getMaxZoom();
+    zoomOutButton.disabled = map.getZoom() <= map.getMinZoom();
+  }
 
-    if (data.missing) {
-      hintsHost.append(h("p", { class: "forecast-panel__hint", text: "Границы стран недоступны — точка выбирается кликом по карте." }));
-    }
+  function clampZoom(value, minZoom = map?.getMinZoom() ?? minZoomFor(container)) {
+    return Math.min(MAX_ZOOM, Math.max(minZoom, Math.round(Number(value))));
   }
 
   function resetView() {
     if (!map) return;
-    map.flyTo([MAP_DEFAULTS.center.lat, MAP_DEFAULTS.center.lng], MAP_DEFAULTS.zoom, {
+    map.flyTo([MAP_DEFAULTS.center.lat, MAP_DEFAULTS.center.lng], clampZoom(MAP_DEFAULTS.zoom), {
       duration: prefersReducedMotion() ? 0 : 0.45,
     });
   }
@@ -554,7 +563,6 @@ export function createMapPage(context = {}) {
       }
       map = null;
       marker = null;
-      countryLayer = null;
     },
     setError(error) {
       showFieldError(error?.message ?? "Не удалось открыть карту");
