@@ -1,0 +1,174 @@
+/*
+ * Экран активации.
+ *
+ * Оформлен теми же токенами, что и приложение: человек, который видит его
+ * первым, должен узнать интерфейс, а не «окно регистрации». Полоса
+ * перетаскивания окна (.window-drag) обязательна — системной строки заголовка
+ * у окна нет, и без неё окно активации нельзя было бы сдвинуть.
+ */
+
+.activate {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--titlebar-h) + var(--sp-8)) var(--sp-4) var(--sp-8);
+  background: var(--app-bg);
+}
+
+.activate__scroll {
+  width: 100%;
+  max-width: 640px;
+  max-height: 100%;
+  overflow: auto;
+}
+
+.activate__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-8);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.activate__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.activate__logo {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+
+.activate__names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.activate__name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--text-primary);
+}
+
+.activate__sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+
+.activate__lead {
+  max-width: 56ch;
+}
+
+/* Код длинный (128 символов): моноширинный набор, группы по 8 символов. */
+.activate__input {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  word-break: break-all;
+  min-height: 96px;
+}
+
+.activate__hintrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.activate__hintrow .field__hint {
+  margin: 0;
+}
+
+.activate__count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.activate__count--full {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.activate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.activate__divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.activate__machine {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.activate__machine-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.activate__machine-id {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.activate__details {
+  padding-top: var(--sp-1);
+  border-top: 1px dashed var(--border);
+}
+
+.activate__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-8) var(--sp-4);
+  text-align: center;
+}
+
+.activate__done-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--surface-green);
+  color: var(--green);
+}
+
+/* Узкое окно: кнопки в столбик, отступы меньше. */
+@media (max-width: 720px) {
+  .activate__card {
+    padding: var(--sp-6) var(--sp-4);
+  }
+
+  .activate__actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .activate__machine {
+    flex-direction: column;
+  }
+}

@@ -1,12 +1,18 @@
 # Сборка и проверка «АгроПрогноз — Кукуруза» на Windows.
 #
 # Джобы:
-#   verify   — unit-тесты + сборка renderer (быстрый гейт).
-#   smoke    — браузерный smoke-тест сценария (информационный, релиз не блокирует).
-#   portable — portable EXE (electron-builder), артефакт AgroPrognoz-<version>-portable.exe.
+#   verify   — unit-тесты + сборка renderer + защищённая сборка main process
+#              (обфускация, манифест целостности и самопроверка) — быстрый гейт.
+#   smoke    — браузерные проверки: защита production-сборки (страница вне
+#              Electron работать не должна) и сценарий приложения на dev-сервере.
+#   portable — portable EXE (electron-builder) и проверка того, что оказалось
+#              внутри: состав app.asar, цепочка целостности, страж лицензии,
+#              Electron Fuses. Артефакт AgroPrognoz-<version>-portable.exe.
 # При пуше тега v* EXE дополнительно публикуется в GitHub Release.
 #
 # Платные сервисы не используются: только GitHub-hosted runner и npm.
+# Закрытый ключ лицензий в CI не нужен и не передаётся: сборка проверяется
+# выдуманными кодами, а настоящие выписывает владелец приложения локально.
 
 name: windows-build
 
@@ -19,6 +25,10 @@ on:
 
 permissions:
   contents: write
+  # комментарий с логом при падении (scripts/ci-report.mjs): логи Actions
+  # лежат на отдельном хосте и не всегда доступны, а api.github.com доступен.
+  issues: write
+  pull-requests: write
 
 env:
   NODE_VERSION: "20"
@@ -39,21 +49,59 @@ jobs:
           cache: npm
 
       - name: Зависимости
-        run: npm ci --no-audit --no-fund
+        run: |
+          mkdir -p ci-logs
+          npm ci --no-audit --no-fund 2>&1 | tee ci-logs/npm-ci.log
 
       - name: Иконки и геоданные
         run: |
-          npm run icon
-          npm run prepare:assets
+          set -o pipefail
+          npm run icon 2>&1 | tee ci-logs/icon.log
+          npm run prepare:assets 2>&1 | tee ci-logs/assets.log
 
-      - name: Unit-тесты
-        run: npm test
+      - name: Unit-тесты (включая лицензию и защиту)
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ci-logs/test.log
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      # Выдуманная ключевая пара только для самопроверки harden: стражу
+      # подменяется keyMaterial в памяти, боевой ключ и electron/license/keys.cjs
+      # не трогаются и в сборку не попадают. Без неё в CI не проверялся бы самый
+      # важный путь — полный цикл активации на ОБФУСЦИРОВАННОМ коде.
+      - name: Выдуманный ключ для самопроверки активации
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+            const lines = [
+              "AGRO_LICENSE_SECKEY=" + privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+              "AGRO_LICENSE_PUBKEY=" + publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+              "AGRO_LICENSE_KEY_ID=1",
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("ключ для самопроверки создан (не боевой)");
+          '
+
+      - name: Защищённая сборка main process
+        run: |
+          set -o pipefail
+          npm run harden 2>&1 | tee ci-logs/harden.log
+
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
 
   smoke:
-    name: Smoke-тест в браузере
+    name: Браузерные проверки
     runs-on: windows-latest
     needs: verify
     defaults:
@@ -76,12 +124,15 @@ jobs:
           npm run prepare:assets
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
 
-      - name: Браузер для smoke-теста
+      - name: Браузер для проверок
         run: npx playwright install chromium
 
-      - name: Предпросмотр сборки (фон)
+      - name: Предпросмотр production-сборки (фон)
         run: |
           npm run preview > preview.log 2>&1 &
           echo $! > preview.pid
@@ -93,12 +144,48 @@ jobs:
           done
           curl -sf http://localhost:4173/ > /dev/null
 
+      - name: Защита production-сборки (страница вне Electron)
+        timeout-minutes: 10
+        run: |
+          mkdir -p tests/smoke/debug
+          npm run test:gate 2>&1 | tee tests/smoke/debug/gate.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Dev-сервер для сценария (фон)
+        run: |
+          npm run dev > dev-server.log 2>&1 &
+          echo $! > dev.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173/ > /dev/null; then
+              echo "dev server is up"; break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:5173/ > /dev/null
+
+      - name: Экран активации (dev-сервер, ?license=demo)
+        timeout-minutes: 10
+        env:
+          AGRO_ACTIVATION_URL: http://localhost:5173
+        run: |
+          npm run test:activation 2>&1 | tee tests/smoke/debug/activation.log
+          exit "${PIPESTATUS[0]}"
+
       - name: Smoke-тест сценария
         timeout-minutes: 15
+        env:
+          AGRO_SMOKE_URL: http://localhost:5173
         run: |
           mkdir -p tests/smoke/debug
           npm run test:smoke 2>&1 | tee tests/smoke/debug/smoke.log
           exit "${PIPESTATUS[0]}"
+
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
 
       - name: Чёрный ящик при падении
         if: failure()
@@ -111,11 +198,13 @@ jobs:
           git commit -m "debug ${GITHUB_RUN_ID}" || true
           git push -f origin debug/smoke
 
-      - name: Остановить предпросмотр
+      - name: Остановить серверы
         if: always()
-        run: kill "$(cat preview.pid)" 2>/dev/null || true
+        run: |
+          kill "$(cat preview.pid)" 2>/dev/null || true
+          kill "$(cat dev.pid)" 2>/dev/null || true
 
-      - name: Скриншоты smoke-теста
+      - name: Скриншоты проверок
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -148,16 +237,58 @@ jobs:
           npm run prepare:assets
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      # Выдуманная ключевая пара только для самопроверки harden: стражу
+      # подменяется keyMaterial в памяти, боевой ключ и electron/license/keys.cjs
+      # не трогаются и в сборку не попадают. Без неё в CI не проверялся бы самый
+      # важный путь — полный цикл активации на ОБФУСЦИРОВАННОМ коде.
+      - name: Выдуманный ключ для самопроверки активации
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+            const lines = [
+              "AGRO_LICENSE_SECKEY=" + privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+              "AGRO_LICENSE_PUBKEY=" + publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+              "AGRO_LICENSE_KEY_ID=1",
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("ключ для самопроверки создан (не боевой)");
+          '
 
       - name: Portable EXE
         timeout-minutes: 30
-        run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run dist:win 2>&1 | tee ci-logs/dist-win.log
 
       - name: Проверить артефакт
-        run: ls -la release/
+        run: |
+          ls -la release/ | tee ci-logs/release-listing.log
+          ls -la release/win-unpacked/resources/ | tee -a ci-logs/release-listing.log
+
+      # EXE в CI запустить нельзя, но можно разобрать его содержимое:
+      # состав app.asar, целостность упакованных файлов, работа стража лицензии
+      # и состояние Electron Fuses в AgroPrognoz.exe.
+      - name: Проверка упаковки и фьюзов
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          npm run verify:package 2>&1 | tee ci-logs/verify-package.log
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
 
       - name: Артефакт AgroPrognoz-portable.exe
         uses: actions/upload-artifact@v4
@@ -169,6 +300,6 @@ jobs:
 
       - name: Release при теге v*
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release create "${GITHUB_REF_NAME}" release/AgroPrognoz-*-portable.exe --title "${GITHUB_REF_NAME}" --notes "Portable-сборка для Windows (без установки)."
+        run: gh release create "${GITHUB_REF_NAME}" release/AgroPrognoz-*-portable.exe --title "${GITHUB_REF_NAME}" --notes "Portable-сборка для Windows (без установки). Требуется код активации; лицензия бессрочная."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
