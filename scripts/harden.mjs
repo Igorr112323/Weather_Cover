@@ -56,7 +56,11 @@ const PLACEHOLDER_ELECTRON = "__AGRO_ELECTRON_ROOT__";
 const BASE = {
   compact: true,
   simplify: true,
-  renameGlobals: false, // переименование глобальных имён ломает require/module
+  // Имена верхнего уровня переименовываются: в main.cjs нет конструкций,
+  // зависящих от имён (eval, new Function, global[...], разбор стека), а
+  // module.exports/require работают по строкам и свойствам — их обфускация не трогает.
+  // Проверено самопроверкой ниже (загрузка preload и прогон стража).
+  renameGlobals: true,
   identifierNamesGenerator: "hexadecimal",
   log: false,
 };
@@ -88,12 +92,18 @@ const PROFILE_LICENSE = {
   selfDefending: true,
 };
 
-/** Основной процесс: жёстко, но без selfDefending — здесь важна надёжность запуска. */
+/**
+ * Основной процесс: жёстко, но без selfDefending — здесь важна надёжность запуска.
+ * stringArrayThreshold = 1 и unicodeEscapeSequence = 1 обязательны: в main.cjs
+ * живут русские строки (заголовок окна, сообщения об отказе) и имена IPC-каналов.
+ * Если хоть часть строк остаётся на месте, бинарник читается как оглавление
+ * приложения — это проверяет npm run verify:package.
+ */
 const PROFILE_MAIN = {
   ...BASE,
   target: "node",
   stringArray: true,
-  stringArrayThreshold: 0.9,
+  stringArrayThreshold: 1,
   stringArrayEncoding: ["base64"],
   stringArrayRotate: true,
   stringArrayShuffle: true,
@@ -105,7 +115,7 @@ const PROFILE_MAIN = {
   deadCodeInjectionThreshold: 0.1,
   numbersToExpressions: true,
   transformObjectKeys: false,
-  unicodeEscapeSequence: false,
+  unicodeEscapeSequence: true,
   selfDefending: false,
 };
 
@@ -117,7 +127,7 @@ const PROFILE_PRELOAD = {
   ...BASE,
   target: "browser-no-eval",
   stringArray: true,
-  stringArrayThreshold: 0.75,
+  stringArrayThreshold: 1,
   stringArrayEncoding: [],
   stringArrayRotate: true,
   stringArrayShuffle: true,
@@ -127,7 +137,7 @@ const PROFILE_PRELOAD = {
   deadCodeInjection: false,
   numbersToExpressions: true,
   transformObjectKeys: false,
-  unicodeEscapeSequence: false,
+  unicodeEscapeSequence: true,
   selfDefending: false,
 };
 
@@ -397,7 +407,120 @@ async function selfTest({ manifest, distRoot, electronRoot }) {
     }
   }
 
+  // 6. Обфусцированный код исполняется. Страж и ядро проверяются выше настоящими
+  // вызовами, а main.cjs и preload.cjs без Electron не запустить — поэтому здесь
+  // хотя бы синтаксис каждого файла и загрузка preload с подставным electron:
+  // переименование имён (renameGlobals) ломает код именно на этапе выполнения.
+  for (const relative of Object.keys(manifest.electron).sort()) {
+    const code = await readFile(path.join(OUT_ELECTRON, relative), "utf8");
+    try {
+      new vm.Script(code, { filename: relative });
+      check(`синтаксис ${relative}`, true);
+    } catch (error) {
+      check(`синтаксис ${relative}`, false, error?.message);
+    }
+  }
+
+  const preload = loadObfuscatedPreload(path.join(OUT_ELECTRON, "preload.cjs"));
+  check("preload грузится с подставным electron", preload.error === null, preload.error ?? "");
+  if (preload.error === null) {
+    const bridge = preload.bridge;
+    check("preload раскрыл мост window.agro", Boolean(bridge) && bridge.isElectron === true);
+    check(
+      "preload: лицензия в мосте",
+      ["status", "activate", "activateFromFile"].every((name) => typeof bridge?.license?.[name] === "function"),
+    );
+    check(
+      "preload: каналы данных в мосте",
+      ["getAppInfo", "notifyReady", "readDatabase", "writeDatabase", "preserveDatabase", "saveFile"].every(
+        (name) => typeof bridge?.[name] === "function",
+      ),
+    );
+    check("preload: токена сессии в мосте нет", !("token" in (bridge ?? {})));
+
+    // Ответы main process приходят с токеном: preload обязан его снять.
+    const status = await bridge.license.status();
+    check("preload: состояние лицензии возвращается", status?.activated === true && status?.permanent === true);
+    check("preload: токен вырезан из ответа", status && !("token" in status));
+    // Состояние лицензии запрашивается без токена: токен приходит В ОТВЕТЕ,
+    // остаётся в замыкании preload и оттуда запечатывает запросы данных.
+    check("preload: запрос состояния уходит без токена", preload.calls.some((call) => call.channel === "agro:license-status" && call.payload === undefined));
+
+    await bridge.readDatabase();
+    const readCall = preload.calls.find((call) => call.channel === "agro:read-database");
+    check("preload: запрос данных запечатан токеном из ответа", readCall?.payload?.token === SESSION_TOKEN_STUB);
+
+    // Санитайзеры ввода: мусор не должен уходить в main process.
+    const badWrite = await bridge.writeDatabase("не байты");
+    check("preload: некорректная запись отклонена на месте", badWrite?.ok === false && badWrite?.code === "INVALID_INPUT");
+    const badFile = await bridge.saveFile({ fileName: "../../evil.txt", bytes: new Uint8Array([1]) });
+    check("preload: имя файла с путём отклонено", badFile?.ok === false && badFile?.code === "INVALID_INPUT");
+    check("preload: каналы отклонённых вызовов не дёргались", !preload.calls.some((call) => call.channel === "agro:save-file" && String(call.payload?.fileName ?? "").includes("..")));
+  }
+
   return checks;
+}
+
+/** Токен, который «присылает» main process: preload обязан спрятать его в замыкании. */
+const SESSION_TOKEN_STUB = "токен-сессии-из-main-process";
+
+/**
+ * Загрузка обфусцированного preload.cjs с подставным модулем electron.
+ * Полноценного renderer'а нет, но contextBridge и ipcRenderer достаточно, чтобы
+ * выполнить код и проверить, что мост window.agro остался целым.
+ * @returns {{bridge:any, calls:Array<{channel:string, payload:any}>, error:string|null}}
+ */
+function loadObfuscatedPreload(file) {
+  const Module = require("node:module");
+  const calls = [];
+  const sent = [];
+  let bridge = null;
+
+  const responses = {
+    "agro:license-status": { activated: true, permanent: true, expiration: null, serial: "0011223344556677", token: SESSION_TOKEN_STUB },
+    "agro:license-activate": { ok: true, status: { activated: true, permanent: true }, token: SESSION_TOKEN_STUB },
+    "agro:license-activate-file": { ok: false, code: "CANCELED" },
+    "agro:get-app-info": { version: "0.0.0", dev: false },
+    "agro:read-database": { ok: true, bytes: new Uint8Array([1, 2, 3]) },
+    "agro:write-database": { ok: true },
+    "agro:preserve-database": { ok: true },
+    "agro:save-file": { ok: true },
+  };
+
+  const electron = {
+    contextBridge: {
+      exposeInMainWorld(key, api) {
+        if (key === "agro") bridge = api;
+      },
+    },
+    ipcRenderer: {
+      invoke(channel, payload) {
+        calls.push({ channel, payload });
+        return Promise.resolve(structuredClone(responses[channel] ?? { ok: false, code: "NO_STUB" }));
+      },
+      send(channel, ...rest) {
+        sent.push({ channel, rest });
+      },
+      on() {},
+      once() {},
+      removeAllListeners() {},
+    },
+  };
+
+  const originalLoad = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === "electron") return electron;
+    return originalLoad.apply(this, arguments);
+  };
+  try {
+    delete require.cache[path.resolve(file)];
+    require(file);
+    return { bridge, calls, sent, error: null };
+  } catch (error) {
+    return { bridge: null, calls, sent, error: `${error?.message ?? error}` };
+  } finally {
+    Module._load = originalLoad;
+  }
 }
 
 /**

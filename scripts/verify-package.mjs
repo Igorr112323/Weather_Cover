@@ -89,9 +89,14 @@ try {
   const packagedMain = await readFile(path.join(appDir, "electron", "main.cjs"), "utf8");
   check("main.cjs обфусцирован", !packagedMain.includes("АгроПрогноз — Кукуруза") && !packagedMain.includes("createSplashWindow"));
   check("main.cjs — не исходник из репозитория", packagedMain.length !== (await readFile(path.join(ROOT, "electron", "main.cjs"), "utf8")).length);
+  // Русские строки — готовое оглавление приложения для того, кто открыл asar.
+  check("в main.cjs не осталось кириллицы", !/[А-Яа-яЁё]/.test(packagedMain));
+  check("в persistence.cjs не осталось кириллицы", !/[А-Яа-яЁё]/.test(await readFile(path.join(appDir, "electron", "persistence.cjs"), "utf8")));
 
   const packagedPreload = await readFile(path.join(appDir, "electron", "preload.cjs"), "utf8");
   check("preload.cjs обфусцирован", !packagedPreload.includes("contextBridge.exposeInMainWorld(\"agro\""));
+  check("в preload.cjs не осталось кириллицы", !/[А-Яа-яЁё]/.test(packagedPreload));
+  check("в guard.cjs не осталось кириллицы", !/[А-Яа-яЁё]/.test(await readFile(path.join(appDir, "electron", "license", "guard.cjs"), "utf8")));
 
   check("манифест целостности в упаковке", files.includes("electron/license/integrity-data.cjs"));
   check("исходников расчётов в упаковке нет", !files.some((item) => item.startsWith("calculations/")));

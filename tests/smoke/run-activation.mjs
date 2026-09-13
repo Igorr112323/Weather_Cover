@@ -42,10 +42,41 @@ function check(name, condition, detail = "") {
   }
 }
 
-/** 128 символов тела кода — ровно столько нужно ввести. */
-const FULL_CODE = `AGRO-${"ABCDEFGH-".repeat(14)}ABCDEFGH`;
+/** 128 символов тела кода: префикс и 16 групп по 8 символов. */
+const FULL_CODE = `AGRO-${"ABCDEFGH-".repeat(15)}ABCDEFGH`;
 
-console.log(`Экран активации: ${BASE_URL}/?license=demo`);
+/**
+ * Текст заметок экрана: у всех .note display: flex, поэтому «скрытость»
+ * проверяется не только атрибутом hidden, но и фактической видимостью.
+ */
+async function readNotes(target) {
+  return target.evaluate(() => {
+    const read = (kind) => {
+      const node = document.querySelector(`[data-note="${kind}"]`);
+      if (!node) return { text: "", visible: false };
+      const style = getComputedStyle(node);
+      // offsetParent не годится: внутри position:fixed он null и у видимых узлов.
+      const shown =
+        node.hidden === false &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        node.getClientRects().length > 0;
+      return { text: shown ? (node.innerText || node.textContent || "").trim() : "", visible: shown };
+    };
+    const error = read("error");
+    const store = read("store");
+    const tamper = read("tamper");
+    return {
+      error: error.text,
+      store: store.text,
+      tamper: tamper.text,
+      tamperVisible: tamper.visible,
+      errorVisible: error.visible,
+    };
+  });
+}
+
+console.log(`Экран активации: ${BASE_URL}/?license=demo и ?license=demo-tampered`);
 
 await mkdir(SHOTS_DIR, { recursive: true });
 const browser = await chromium.launch({ headless: true, timeout: 90000 });
@@ -102,10 +133,17 @@ try {
   check("счётчик показывает полный код", counter.text === "128 / 128" && counter.full === true, counter.text);
 
   // Активация в браузере невозможна: экран обязан сказать об этом и остаться.
+  // Предупреждение о порче файлов не должно быть видно без причины: у .note
+  // display: flex перебивает атрибут hidden, поэтому в base.css есть [hidden].
+  const notesBefore = await readNotes(page);
+  check("предупреждение о порче файлов скрыто, когда порчи нет", notesBefore.tamper === "", notesBefore.tamper);
+  check("сообщение о нечитаемом хранилище скрыто", notesBefore.store === "");
+
   await page.getByRole("button", { name: "Активировать", exact: true }).click();
-  await page.waitForSelector(".note--danger:not([hidden])", { timeout: 10000 });
-  const errorText = await page.evaluate(() => document.querySelector(".note--danger")?.innerText ?? "");
+  await page.waitForSelector('[data-note="error"]:not([hidden])', { timeout: 10000 });
+  const errorText = (await readNotes(page)).error;
   check("браузерная активация отклонена с понятным сообщением", errorText.length > 10, errorText);
+  check("в браузере честно сказано, что активация недоступна", /недоступн/i.test(errorText), errorText);
   check(
     "после отказа приложение не открылось",
     (await page.evaluate(() => Boolean(document.querySelector(".sidebar")))) === false,
@@ -116,8 +154,14 @@ try {
   // Неполный код не должен даже пытаться активироваться.
   await page.fill("#activation-code", "AGRO-1234");
   await page.getByRole("button", { name: "Активировать", exact: true }).click();
-  const shortError = await page.evaluate(() => document.querySelector(".note--danger")?.innerText ?? "");
+  await page.waitForFunction(
+    () => /неполн|целиком/i.test(document.querySelector('[data-note="error"]')?.textContent ?? ""),
+    null,
+    { timeout: 10000 },
+  );
+  const shortError = (await readNotes(page)).error;
   check("неполный код отклоняется на месте", /неполн|целиком/i.test(shortError), shortError);
+  check("счётчик после обрезки кода", (await page.textContent(".activate__count")) === "4 / 128");
 
   // Вставка из буфера: в headless-браузере буфер пуст — экран не должен упасть.
   await page.fill("#activation-code", FULL_CODE);
@@ -131,6 +175,19 @@ try {
   check("кнопка файла не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-filled.png") });
+
+  // Второй проход: экран с сообщением о порче файлов (?license=demo-tampered).
+  await page.goto(`${BASE_URL}/?license=demo-tampered`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".activate__card", { timeout: 20000 });
+  const tampered = await readNotes(page);
+  check("при порче файлов показано предупреждение", /изменены/i.test(tampered.tamper), tampered.tamper);
+  check("предупреждение о порче видимо (не скрыто стилем)", tampered.tamperVisible === true);
+  const disabled = await page.evaluate(() =>
+    [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
+  );
+  check("кнопки активации заблокированы при порче", disabled.length === 3 && disabled.every(Boolean), String(disabled));
+  check("при порче интерфейс приложения не построен", (await page.evaluate(() => Boolean(document.querySelector(".sidebar")))) === false);
+  await page.screenshot({ path: path.join(SHOTS_DIR, "activation-tampered.png") });
 
   const unexpected = consoleErrors.filter((text) => !/favicon|net::ERR/i.test(text));
   check("в консоли нет ошибок приложения", unexpected.length === 0, unexpected.slice(0, 3).join(" | "));

@@ -53,20 +53,28 @@ export function createActivationPage({ status, version = "", onActivated } = {})
   let busy = false;
   let finished = false;
 
-  /** Пояснение с иконкой и доступом к тексту: сообщение меняется на месте. */
-  function notice(text, tone, visible) {
+  /**
+   * Пояснение с иконкой и доступом к тексту: сообщение меняется на месте.
+   * data-note нужен проверкам (tests/smoke/run-activation.mjs), чтобы отличать
+   * сообщения друг от друга: все они .note--danger и стоят рядом.
+   */
+  function notice(text, tone, visible, kind) {
     const label = h("span", { text });
-    const node = h("div", { class: `note note--${tone}` }, [icon(tone === "danger" ? "circle-alert" : "triangle-alert", { size: 16 }), label]);
+    const node = h("div", { class: `note note--${tone}`, "data-note": kind, "aria-live": "polite" }, [
+      icon(tone === "danger" ? "circle-alert" : "triangle-alert", { size: 16 }),
+      label,
+    ]);
     node.hidden = !visible;
     return { node, setText: (next) => (label.textContent = next) };
   }
 
-  const errorNote = notice("Код не принят.", "danger", false);
-  const storeNote = notice("Файл лицензии на этом компьютере не читается — введите код активации ещё раз.", "warning", Boolean(status?.storeReason));
+  const errorNote = notice("Код не принят.", "danger", false, "error");
+  const storeNote = notice("Файл лицензии на этом компьютере не читается — введите код активации ещё раз.", "warning", Boolean(status?.storeReason), "store");
   const tamperNote = notice(
     "Файлы приложения изменены. Активация невозможна: запустите оригинальный AgroPrognoz.exe или переустановите приложение.",
     "danger",
     status?.tampered === true,
+    "tamper",
   );
 
   const input = h("textarea", {

@@ -101,32 +101,17 @@ function reload() {
  * Решение принимает main process (electron/license/guard.cjs); здесь только
  * показ состояний. Лицензия бессрочная: дат и сроков на экранах нет.
  */
-/**
- * Показ экрана активации в dev-сборке по адресу ?license=demo: единственный
- * способ проверить экран в браузере (в dev-режиме лицензия не требуется, а
- * в production-сборке условие import.meta.env.DEV вырезано вместе с веткой).
- */
-function wantsActivationDemo() {
-  if (!import.meta.env.DEV) return false;
-  try {
-    return new URLSearchParams(window.location.search).get("license") === "demo";
-  } catch {
-    return false;
-  }
-}
-
 async function ensureLicense() {
-  if (wantsActivationDemo()) {
-    await new Promise((resolve) => {
-      const page = createActivationPage({
-        status: { activated: false, machineIdShort: "DEMO-DEMO", machineQuality: "high" },
-        version: state.state.appVersion,
-        onActivated: (nextStatus) => resolve(nextStatus),
-      });
-      root.replaceChildren(page.node);
-      revealWindow();
-    });
-    return { ok: false };
+  // Экран активации в браузере — только dev-сборка: в production ветка
+  // import.meta.env.DEV вырезается вместе с динамическим импортом, поэтому
+  // ни кода, ни строк демо-режима в бандле не остаётся.
+  if (import.meta.env.DEV) {
+    const { activationDemoMode, showActivationDemo } = await import("./dev/activation-demo.js");
+    const demoMode = activationDemoMode(window.location.search);
+    if (demoMode) {
+      await showActivationDemo({ mode: demoMode, root, version: state.state.appVersion, revealWindow });
+      return { ok: false };
+    }
   }
 
   const resolved = await resolveLicense();
