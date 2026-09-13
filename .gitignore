@@ -6,7 +6,9 @@ src/assets/geo/cache/
 .vite/
 coverage/
 tests/smoke/screenshots/
+tests/smoke/debug/
 preview.pid
+ci-logs/
 
 # Защищённая сборка main process (создаёт scripts/harden.mjs)
 hardened/

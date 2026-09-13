@@ -43,8 +43,8 @@ function runCommand(command, args, log = () => {}) {
   }
 }
 
-function readWindowsGuid(log) {
-  const output = runCommand(
+function readWindowsGuid(run, log) {
+  const output = run(
     "reg",
     ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid", "/reg:64"],
     log,
@@ -53,16 +53,16 @@ function readWindowsGuid(log) {
   return match ? match[1].toLowerCase() : "";
 }
 
-function readMacUuid(log) {
-  const output = runCommand("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], log);
+function readMacUuid(run, log) {
+  const output = run("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], log);
   const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
   return match ? match[1].toLowerCase() : "";
 }
 
-function readLinuxMachineId(log) {
+function readLinuxMachineId(readFile, log) {
   for (const file of LINUX_MACHINE_ID_FILES) {
     try {
-      const value = fs.readFileSync(file, "utf8").trim();
+      const value = readFile(file).trim();
       if (value.length >= 16) return value.toLowerCase();
     } catch (error) {
       log(`machine: ${file} не читается (${error?.code ?? error?.message})`);
@@ -82,17 +82,28 @@ function fallbackSeed() {
 }
 
 /**
- * @param {{platform?:string, log?:(...args:any[])=>void, readFile?:(p:string)=>string}} [options]
+ * Системные команды и чтение файлов можно подменить (options.runCommand,
+ * options.readFile): тесты проверяют все три платформы одинаково, независимо от
+ * того, на какой машине их запустили.
+ *
+ * @param {{
+ *   platform?:string,
+ *   log?:(...args:any[])=>void,
+ *   runCommand?:(command:string, args:string[], log:(...a:any[])=>void)=>string,
+ *   readFile?:(path:string)=>string
+ * }} [options]
  */
 function createMachineIdentity(options = {}) {
   const platform = options.platform ?? process.platform;
   const log = options.log ?? (() => {});
+  const run = options.runCommand ?? runCommand;
+  const readFile = options.readFile ?? ((target) => fs.readFileSync(target, "utf8"));
   let cached = null;
 
   function readPrimary() {
-    if (platform === "win32") return readWindowsGuid(log);
-    if (platform === "darwin") return readMacUuid(log);
-    return readLinuxMachineId(log);
+    if (platform === "win32") return readWindowsGuid(run, log);
+    if (platform === "darwin") return readMacUuid(run, log);
+    return readLinuxMachineId(readFile, log);
   }
 
   function identity() {
@@ -126,4 +137,4 @@ function createMachineIdentity(options = {}) {
   };
 }
 
-module.exports = { createMachineIdentity, fallbackSeed, DOMAIN };
+module.exports = { createMachineIdentity, fallbackSeed, DOMAIN, LINUX_MACHINE_ID_FILES };

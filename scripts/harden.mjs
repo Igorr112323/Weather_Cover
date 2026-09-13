@@ -349,22 +349,37 @@ async function selfTest({ manifest, distRoot, electronRoot }) {
   const garbage = await guard.activate("спасибо, но нет");
   check("guard: мусор на вводе отклонён", garbage.ok === false);
 
-  // 5. Если закрытый ключ есть (машина владельца), проверяем полный цикл активации.
-  const secretFile = process.env.AGRO_LICENSE_KEY_FILE ?? path.join(ROOT, "secrets", "license-key.json");
-  if (!process.env.AGRO_LICENSE_SECKEY && existsSync(secretFile)) {
-    const secret = JSON.parse(await readFile(secretFile, "utf8"));
-    const entry = (secret.keys ?? []).find((item) => hardenedKeys.keys.some((key) => key.keyId === item.keyId));
-    if (entry) {
-      const privateKey = crypto.createPrivateKey({ key: Buffer.from(entry.privateKey, "base64"), format: "der", type: "pkcs8" });
-      const payload = core.buildPayload({ keyId: entry.keyId });
+  // 5. Полный цикл активации настоящим кодом. Проверять надо именно
+  // обфусцированный код, поэтому закрытый ключ берётся из любого источника:
+  //   • на машине владельца — secrets/license-key.json (боевой ключ);
+  //   • в CI — выдуманная пара AGRO_LICENSE_SECKEY + AGRO_LICENSE_PUBKEY,
+  //     которая подменяет keyMaterial стража и НЕ попадает в сборку.
+  const cycle = await activationSelfTestKey(hardenedKeys);
+  if (!cycle) {
+    console.log("• полный цикл активации не проверен: нет закрытого ключа (AGRO_LICENSE_SECKEY или secrets/license-key.json)");
+  } else {
+    {
+      // Отдельный страж: у него свой keyMaterial, поэтому и токен свой —
+      // проверять доступ к данным нужно именно у него.
+      const { privateKey, keyMaterial, keyId } = cycle;
+      const cycleGuard = hardenedGuard.createGuard({
+        appRoot: ROOT,
+        userDataDir: path.join(ROOT, "hardened", "selftest"),
+        machine: { machineId: "ab".repeat(32), quality: "high", source: "selftest" },
+        store: memoryStore,
+        integrity: checker,
+        keyMaterial,
+      });
+      await cycleGuard.initialize();
+      const payload = core.buildPayload({ keyId });
       const signature = crypto.sign(null, Buffer.from(payload), privateKey);
       const code = core.formatCode(Buffer.concat([Buffer.from(payload), Buffer.from(signature)]));
-      const activated = await guard.activate(code);
+      const activated = await cycleGuard.activate(code);
       check("guard: действительный код принимается", activated.ok === true, activated.message ?? activated.status?.message ?? "");
       check("guard: после активации выдаётся токен", typeof activated.token === "string" && activated.token.length > 0);
-      check("guard: с токеном данные доступны", guard.gate(activated.token) === null);
-      check("guard: чужой токен не проходит", guard.gate(`${activated.token}x`) !== null);
-      check("guard: статус без токена", guard.status().token === undefined);
+      check("guard: с токеном данные доступны", cycleGuard.gate(activated.token) === null);
+      check("guard: чужой токен не проходит", cycleGuard.gate(`${activated.token}x`) !== null);
+      check("guard: статус без токена", cycleGuard.status().token === undefined);
 
       const reread = await memoryStore.read();
       const secondGuard = hardenedGuard.createGuard({
@@ -373,14 +388,49 @@ async function selfTest({ manifest, distRoot, electronRoot }) {
         machine: { machineId: "ab".repeat(32), quality: "high", source: "selftest" },
         store: memoryStore,
         integrity: checker,
+        keyMaterial,
       });
       const restored = await secondGuard.initialize();
       check("guard: лицензия переживает перезапуск", restored.activated === true && reread.status === "active");
       check("guard: серийник совпадает", restored.serial === activated.status.serial);
+      check("guard: статус после активации — бессрочная", restored.permanent === true && restored.expiration === null);
     }
   }
 
   return checks;
+}
+
+/**
+ * Закрытый ключ для самопроверки полного цикла активации.
+ * @returns {Promise<null | {privateKey:import("node:crypto").KeyObject, keyMaterial:{keys:Array,revokedSerials:Array}, keyId:number}>}
+ */
+async function activationSelfTestKey(hardenedKeys) {
+  const envPrivate = process.env.AGRO_LICENSE_SECKEY;
+  if (envPrivate) {
+    const privateKey = crypto.createPrivateKey({ key: Buffer.from(envPrivate, "base64"), format: "der", type: "pkcs8" });
+    // Открытый ключ: из окружения (CI) или выводим из закрытого (машина владельца).
+    const publicKey =
+      process.env.AGRO_LICENSE_PUBKEY ??
+      crypto.createPublicKey(privateKey).export({ format: "der", type: "spki" }).toString("base64");
+    const keyId = Number(process.env.AGRO_LICENSE_KEY_ID ?? 1);
+    return {
+      privateKey,
+      keyId,
+      keyMaterial: { keys: [{ keyId, label: "selftest", publicKey }], revokedSerials: [] },
+    };
+  }
+
+  const secretFile = process.env.AGRO_LICENSE_KEY_FILE ?? path.join(ROOT, "secrets", "license-key.json");
+  if (!existsSync(secretFile)) return null;
+  const secret = JSON.parse(await readFile(secretFile, "utf8"));
+  const entry = (secret.keys ?? []).find((item) => hardenedKeys.keys.some((key) => key.keyId === item.keyId));
+  if (!entry) return null;
+  return {
+    privateKey: crypto.createPrivateKey({ key: Buffer.from(entry.privateKey, "base64"), format: "der", type: "pkcs8" }),
+    keyId: entry.keyId,
+    // Боевые открытые ключи из сборки: проверяется та же цепочка, что и у пользователя.
+    keyMaterial: { keys: hardenedKeys.keys, revokedSerials: hardenedKeys.revokedSerials ?? [] },
+  };
 }
 
 /** Хранилище лицензии в памяти: самопроверке диск не нужен. */

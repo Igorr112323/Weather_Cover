@@ -32,7 +32,8 @@ const { createLicenseStore, createFallbackCipher } = require("../electron/licens
 const { createIntegrityChecker, manifestRootHash, electronRootHash, hashBytes } = require("../electron/license/integrity.cjs");
 const { decideLaunch, inspectLaunchEnvironment } = require("../electron/license/shield.cjs");
 const { createGuard } = require("../electron/license/guard.cjs");
-const { createMachineIdentity } = require("../electron/license/machine.cjs");
+const machineModule = require("../electron/license/machine.cjs");
+const { createMachineIdentity } = machineModule;
 
 /* ── Общие заготовки ─────────────────────────────────────────────────────── */
 
@@ -625,23 +626,85 @@ describe("условия запуска (shield)", () => {
 
 /* ── Идентификатор компьютера ────────────────────────────────────────────── */
 
+/** Идентификатор, который должен получиться из системного значения. */
+function expectedMachineId(seed) {
+  return crypto.createHash("sha256").update(`${machineModule.DOMAIN}${seed}`, "utf8").digest("hex");
+}
+
 describe("идентификатор компьютера", () => {
-  it("в Linux берётся /etc/machine-id, идентификатор — 64 hex", () => {
-    const machine = createMachineIdentity({ platform: "linux" });
+  // Системные команды и файлы подменяются: тест одинаков на Windows, Linux и macOS,
+  // иначе прогон в CI (Windows) зависел бы от реестра конкретного раннера.
+  const REG_OUTPUT = [
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography",
+    "    MachineGuid    REG_SZ    12345678-1234-1234-1234-1234567890ab",
+    "",
+  ].join("\n");
+  const GUID = "12345678-1234-1234-1234-1234567890ab";
+  const windows = (output) => createMachineIdentity({ platform: "win32", runCommand: () => output, log: () => {} });
+
+  it("в Windows берётся MachineGuid из реестра, идентификатор — 64 hex", () => {
+    const machine = windows(REG_OUTPUT);
     assert.match(machine.machineId, /^[0-9a-f]{64}$/);
-    assert.equal(machine.quality, fs.existsSync("/etc/machine-id") ? "high" : "low");
+    assert.equal(machine.quality, "high");
+    assert.equal(machine.source, "MachineGuid");
+    assert.equal(machine.machineId, expectedMachineId(GUID));
+  });
+
+  it("команда реестра вызывается списком аргументов, без оболочки", () => {
+    const calls = [];
+    createMachineIdentity({
+      platform: "win32",
+      runCommand: (command, args) => {
+        calls.push({ command, args });
+        return REG_OUTPUT;
+      },
+    }).identity();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, "reg");
+    assert.ok(Array.isArray(calls[0].args) && calls[0].args.every((item) => typeof item === "string"));
+    assert.ok(!calls[0].args.some((item) => /[;&|`$]/.test(item)), "в аргументах нет символов оболочки");
+  });
+
+  it("в Linux берётся /etc/machine-id", () => {
+    const machine = createMachineIdentity({ platform: "linux", readFile: () => `${"a".repeat(32)}\n`, log: () => {} });
+    assert.equal(machine.quality, "high");
+    assert.equal(machine.source, "machine-id");
+    assert.equal(machine.machineId, expectedMachineId("a".repeat(32)));
+  });
+
+  it("в macOS берётся IOPlatformUUID", () => {
+    const output = '|   "IOPlatformUUID" = "ABCDEF12-3456-7890-abcd-ef1234567890"';
+    const machine = createMachineIdentity({ platform: "darwin", runCommand: () => output, log: () => {} });
+    assert.equal(machine.quality, "high");
+    assert.equal(machine.source, "IOPlatformUUID");
+    assert.equal(machine.machineId, expectedMachineId("abcdef12-3456-7890-abcd-ef1234567890"));
   });
 
   it("недоступный системный идентификатор честно помечается как low", () => {
-    const machine = createMachineIdentity({ platform: "win32", log: () => {} });
+    const machine = windows("");
     assert.match(machine.machineId, /^[0-9a-f]{64}$/);
+    assert.equal(machine.quality, "low");
+    assert.equal(machine.source, "fallback");
+    assert.notEqual(machine.machineId, expectedMachineId(GUID));
+  });
+
+  it("нераспознанный вывод реестра тоже даёт low", () => {
+    const machine = windows("ОШИБКА: не удается найти указанный ключ реестра");
     assert.equal(machine.quality, "low");
     assert.equal(machine.source, "fallback");
   });
 
-  it("значение стабильно между обращениями", () => {
-    const machine = createMachineIdentity({ platform: "linux" });
+  it("значение стабильно между обращениями и зависит от идентификатора машины", () => {
+    const machine = windows(REG_OUTPUT);
     assert.equal(machine.machineId, machine.machineId);
+    assert.notEqual(machine.machineId, windows(`${GUID.slice(0, -2)}cd`).machineId);
+  });
+
+  it("реальная платформа тоже даёт рабочий идентификатор", () => {
+    // Без подмен: на машине запуска берётся её собственный идентификатор или fallback.
+    const machine = createMachineIdentity({ log: () => {} });
+    assert.match(machine.machineId, /^[0-9a-f]{64}$/);
+    assert.ok(["high", "low"].includes(machine.quality));
   });
 });
 

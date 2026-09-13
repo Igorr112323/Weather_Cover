@@ -78,7 +78,7 @@ try {
   check("поле кода на месте", structure.hasInput === true);
   check("полоса перетаскивания окна есть", structure.drag === true);
   check("идентификатор компьютера показан", structure.machineId === "DEMO-DEMO", structure.machineId);
-  check("кнопки активации", structure.buttons.length >= 2, structure.buttons.join(", "));
+  check("три кнопки активации", structure.buttons.length === 3, structure.buttons.join(", "));
   check("в тексте экрана сказано про бессрочность", /бессрочн/i.test(structure.lead) && /бессрочн/i.test(structure.details));
   check(
     "на экране нет ни одной даты и ни одного срока",
@@ -102,7 +102,7 @@ try {
   check("счётчик показывает полный код", counter.text === "128 / 128" && counter.full === true, counter.text);
 
   // Активация в браузере невозможна: экран обязан сказать об этом и остаться.
-  await page.click(".activate__actions .btn--primary");
+  await page.getByRole("button", { name: "Активировать", exact: true }).click();
   await page.waitForSelector(".note--danger:not([hidden])", { timeout: 10000 });
   const errorText = await page.evaluate(() => document.querySelector(".note--danger")?.innerText ?? "");
   check("браузерная активация отклонена с понятным сообщением", errorText.length > 10, errorText);
@@ -115,18 +115,18 @@ try {
 
   // Неполный код не должен даже пытаться активироваться.
   await page.fill("#activation-code", "AGRO-1234");
-  await page.click(".activate__actions .btn--primary");
+  await page.getByRole("button", { name: "Активировать", exact: true }).click();
   const shortError = await page.evaluate(() => document.querySelector(".note--danger")?.innerText ?? "");
   check("неполный код отклоняется на месте", /неполн|целиком/i.test(shortError), shortError);
 
   // Вставка из буфера: в headless-браузере буфер пуст — экран не должен упасть.
   await page.fill("#activation-code", FULL_CODE);
-  await page.click(".activate__actions .btn:nth-child(2)");
+  await page.getByRole("button", { name: /буфер/i }).click();
   await page.waitForTimeout(600);
   check("кнопка вставки не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 
   // Активация файлом в браузере: системного диалога нет, отказ обязателен.
-  await page.click(".activate__actions .btn:nth-child(3)");
+  await page.getByRole("button", { name: /файлом/i }).click();
   await page.waitForTimeout(600);
   check("кнопка файла не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 

@@ -25,6 +25,10 @@ on:
 
 permissions:
   contents: write
+  # комментарий с логом при падении (scripts/ci-report.mjs): логи Actions
+  # лежат на отдельном хосте и не всегда доступны, а api.github.com доступен.
+  issues: write
+  pull-requests: write
 
 env:
   NODE_VERSION: "20"
@@ -45,21 +49,56 @@ jobs:
           cache: npm
 
       - name: Зависимости
-        run: npm ci --no-audit --no-fund
+        run: |
+          mkdir -p ci-logs
+          npm ci --no-audit --no-fund 2>&1 | tee ci-logs/npm-ci.log
 
       - name: Иконки и геоданные
         run: |
-          npm run icon
-          npm run prepare:assets
+          set -o pipefail
+          npm run icon 2>&1 | tee ci-logs/icon.log
+          npm run prepare:assets 2>&1 | tee ci-logs/assets.log
 
       - name: Unit-тесты (включая лицензию и защиту)
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ci-logs/test.log
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      # Выдуманная ключевая пара только для самопроверки harden: стражу
+      # подменяется keyMaterial в памяти, боевой ключ и electron/license/keys.cjs
+      # не трогаются и в сборку не попадают. Без неё в CI не проверялся бы самый
+      # важный путь — полный цикл активации на ОБФУСЦИРОВАННОМ коде.
+      - name: Выдуманный ключ для самопроверки активации
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+            const lines = [
+              "AGRO_LICENSE_SECKEY=" + privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+              "AGRO_LICENSE_PUBKEY=" + publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+              "AGRO_LICENSE_KEY_ID=1",
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("ключ для самопроверки создан (не боевой)");
+          '
 
       - name: Защищённая сборка main process
-        run: npm run harden
+        run: |
+          set -o pipefail
+          npm run harden 2>&1 | tee ci-logs/harden.log
+
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
 
   smoke:
     name: Браузерные проверки
@@ -85,7 +124,10 @@ jobs:
           npm run prepare:assets
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
 
       - name: Браузер для проверок
         run: npx playwright install chromium
@@ -138,6 +180,13 @@ jobs:
           npm run test:smoke 2>&1 | tee tests/smoke/debug/smoke.log
           exit "${PIPESTATUS[0]}"
 
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
+
       - name: Чёрный ящик при падении
         if: failure()
         run: |
@@ -188,23 +237,58 @@ jobs:
           npm run prepare:assets
 
       - name: Сборка renderer
-        run: npm run build
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/build.log
+
+      # Выдуманная ключевая пара только для самопроверки harden: стражу
+      # подменяется keyMaterial в памяти, боевой ключ и electron/license/keys.cjs
+      # не трогаются и в сборку не попадают. Без неё в CI не проверялся бы самый
+      # важный путь — полный цикл активации на ОБФУСЦИРОВАННОМ коде.
+      - name: Выдуманный ключ для самопроверки активации
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+            const lines = [
+              "AGRO_LICENSE_SECKEY=" + privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+              "AGRO_LICENSE_PUBKEY=" + publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+              "AGRO_LICENSE_KEY_ID=1",
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+            console.log("ключ для самопроверки создан (не боевой)");
+          '
 
       - name: Portable EXE
         timeout-minutes: 30
-        run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm run dist:win 2>&1 | tee ci-logs/dist-win.log
 
       - name: Проверить артефакт
-        run: ls -la release/
+        run: |
+          ls -la release/ | tee ci-logs/release-listing.log
+          ls -la release/win-unpacked/resources/ | tee -a ci-logs/release-listing.log
 
       # EXE в CI запустить нельзя, но можно разобрать его содержимое:
       # состав app.asar, целостность упакованных файлов, работа стража лицензии
       # и состояние Electron Fuses в AgroPrognoz.exe.
       - name: Проверка упаковки и фьюзов
         timeout-minutes: 10
-        run: npm run verify:package
+        run: |
+          set -o pipefail
+          npm run verify:package 2>&1 | tee ci-logs/verify-package.log
+      - name: "Диагноз: лог падения в обсуждение"
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-report.mjs || true
 
       - name: Артефакт AgroPrognoz-portable.exe
         uses: actions/upload-artifact@v4

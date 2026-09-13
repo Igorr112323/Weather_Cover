@@ -94,8 +94,17 @@ try {
   check("preload.cjs обфусцирован", !packagedPreload.includes("contextBridge.exposeInMainWorld(\"agro\""));
 
   check("манифест целостности в упаковке", files.includes("electron/license/integrity-data.cjs"));
-  check("исходников лицензий в упаковке нет", !files.some((item) => item.startsWith("calculations/")));
-  check("node_modules в упаковку не попали", !files.some((item) => item.startsWith("node_modules/")));
+  check("исходников расчётов в упаковке нет", !files.some((item) => item.startsWith("calculations/")));
+  check("исходников интерфейса (src/) в упаковке нет", !files.some((item) => item.startsWith("src/")));
+  check("скриптов сборки в упаковке нет", !files.some((item) => item.startsWith("scripts/")));
+  check("тестов в упаковке нет", !files.some((item) => item.startsWith("tests/")));
+  check("ключей и журнала лицензий в упаковке нет", !files.some((item) => item.startsWith("secrets/") || item.endsWith(".agrolic")));
+  // electron-builder всегда кладёт в asar production-зависимости из package.json,
+  // поэтому список зависимостей намеренно пуст: всё нужное собирает Vite в dist/
+  // (шрифты, chart.js, leaflet, sql-wasm). Появится node_modules — значит кто-то
+  // вернул пакет в dependencies, и в EXE поедет лишний (необфусцированный) код.
+  const modules = files.filter((item) => item.startsWith("node_modules/"));
+  check("node_modules в упаковку не попали", modules.length === 0, modules.slice(0, 5).join(", "));
 
   const packagedPkg = JSON.parse(await readFile(path.join(appDir, "package.json"), "utf8"));
   check("точка входа — electron/main.cjs", packagedPkg.main === "electron/main.cjs", packagedPkg.main);

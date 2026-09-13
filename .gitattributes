@@ -1,0 +1,23 @@
+# Единые переводы строк во всех рабочих копиях: LF.
+# Это не косметика — от переводов строк зависят SHA-256 файлов сборки
+# (манифест целостности) и результат обфускации (scripts/harden.mjs):
+# прогон в CI на Windows должен давать те же байты, что и локально.
+* text=auto eol=lf
+
+# Бинарные данные — без преобразований
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.sqlite binary
+*.sqlite3 binary
+*.db binary
+*.exe binary
+*.zip binary
+*.wasm binary
+*.pdf binary
