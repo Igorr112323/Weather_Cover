@@ -241,6 +241,7 @@ async function startApp(db) {
   root.replaceChildren(shell.node);
 
   routerRef.current = createRouter({ mount: shell.main, routes, context });
+  syncWindowControls();
   await routerRef.current.start();
   revealWindow();
 
@@ -261,6 +262,23 @@ async function resolveVersion() {
     console.error("Версия приложения не получена", error);
     return fallback;
   }
+}
+
+/**
+ * Кнопки окна Electron рисуются на прозрачном фоне поверх интерфейса: над
+ * картой (спутниковый снимок) их значки светлые, на остальных разделах — тёмные.
+ */
+function syncWindowControls() {
+  if (!window.agro?.setWindowControlsOnDark) return;
+  let last = null;
+  const apply = (snapshot) => {
+    const onDark = snapshot.route?.name === "map";
+    if (onDark === last) return;
+    last = onDark;
+    window.agro.setWindowControlsOnDark(onDark);
+  };
+  state.subscribe(apply);
+  apply(state.state);
 }
 
 /** Перед закрытием окна в Electron отдаём накопленные записи на диск. */

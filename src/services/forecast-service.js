@@ -20,6 +20,21 @@ import {
 /** Единственная точка импорта движка. */
 const ENGINE_LOADER = () => import("../../calculations/forecast_engine.js");
 
+/**
+ * Прогноз без сорта. Контракт движка требует непустые идентификатор и
+ * название сорта, поэтому в запрос уходит эта метка; в базе сорт при этом
+ * не привязывается (variety_id = NULL).
+ */
+export const NO_VARIETY = Object.freeze({ id: "none", name: "Без сорта" });
+
+/** Снимок сорта для отчёта, когда объекта сорта нет: расчёт без сорта или сорт удалён. */
+function fallbackVarietySnapshot(result) {
+  if (result?.request?.varietyId === NO_VARIETY.id) {
+    return { id: null, name: NO_VARIETY.name, type: null, breeder: null, fao: null, vegetationDays: null };
+  }
+  return varietySnapshot(null);
+}
+
 export class ForecastError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -95,7 +110,7 @@ export async function saveReport({ db, result, variety, datasetId = null }) {
   );
   const saved = await db.commit((handle) =>
     insertReportSnapshot(handle, result, {
-      variety: variety ?? varietySnapshot(null),
+      variety: variety ?? fallbackVarietySnapshot(result),
       datasetId,
       name,
     }),

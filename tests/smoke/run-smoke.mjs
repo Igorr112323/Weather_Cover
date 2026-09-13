@@ -129,6 +129,7 @@ async function scenario(browser) {
   await page.getByRole("button", { name: "Выбрать месяц" }).click();
   await page.locator(".mp").waitFor({ timeout: 5000 });
   check("месяц: в панели нет дней", (await page.locator(".mp__month").count()) === 12);
+  check("месяц: стрелки года без всплывающих подсказок", (await page.locator(".mp__head [data-tip], .mp__head button[title]").count()) === 0);
   check("месяц: следующий год недоступен", await page.getByRole("button", { name: "Следующий год" }).isDisabled());
   const now = new Date();
   const futureCount = 12 - (now.getMonth() + 1);
@@ -158,6 +159,10 @@ async function scenario(browser) {
   const varietySelect = page.locator(".forecast-panel select").first();
   const varietyCount = await varietySelect.locator("option").count();
   check("карта: в списке сортов есть записи", varietyCount >= 1);
+  check(
+    "карта: сорт по умолчанию — «Без сорта»",
+    (await varietySelect.inputValue()) === "" && (await varietySelect.locator("option").first().innerText()) === "Без сорта",
+  );
   if (varietyCount > 1) {
     // Первое значение может быть плейсхолдером — выбираем первую непустую опцию.
     const values = await varietySelect.locator("option").evaluateAll((nodes) =>

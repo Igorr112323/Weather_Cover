@@ -56,8 +56,9 @@ export function openMonthPicker({ value, minMonth, maxMonth, onSelect, anchor, o
   const grid = h("div", { class: "mp__grid", role: "grid", "aria-label": "Месяцы" });
   const footerNote = h("span", { class: "muted" });
 
-  const prevYear = createIconButton({ icon: "chevron-left", label: "Предыдущий год", size: 16, onClick: () => stepYear(-1) });
-  const nextYear = createIconButton({ icon: "chevron-right", label: "Следующий год", size: 16, onClick: () => stepYear(1) });
+  // Без всплывающих подсказок: назначение стрелок очевидно, подпись остаётся только для экранных дикторов.
+  const prevYear = createIconButton({ icon: "chevron-left", label: "Предыдущий год", size: 16, tooltip: false, onClick: () => stepYear(-1) });
+  const nextYear = createIconButton({ icon: "chevron-right", label: "Следующий год", size: 16, tooltip: false, onClick: () => stepYear(1) });
 
   const panel = h("div", { class: "mp", role: "dialog", "aria-modal": "false", "aria-label": "Выбор месяца" }, [
     h("div", { class: "mp__head" }, [prevYear, yearInput, nextYear]),

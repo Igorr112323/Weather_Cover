@@ -48,6 +48,12 @@ const SPLASH_FONTS_TIMEOUT_MS = 1000;
 /** Экран загрузки закрывается чуть позже показа главного окна, чтобы между ними не было пустого кадра. */
 const SPLASH_CLOSE_DELAY_MS = 250;
 /**
+ * Кнопки окна (свернуть/развернуть/закрыть) на прозрачном фоне. Значки тёмные,
+ * а над картой — светлые: там под ними спутниковый снимок (renderer сообщает
+ * о смене раздела сигналом agro:window-controls).
+ */
+const WINDOW_CONTROLS = Object.freeze({ color: "#00000000", symbol: "#18271e", symbolOnDark: "#ffffff", height: 40 });
+/**
  * Portable-сборка: NSIS держит заставку build/splash.bmp, пока приложение не
  * создаст файл по этому пути. Переменную задаёт NSIS перед запуском
  * (scripts/patch-portable-nsi.mjs); вне portable-сборки она пуста.
@@ -348,11 +354,11 @@ function createWindow() {
     backgroundColor: "#f4f7f4",
     autoHideMenuBar: true,
     // Без системной строки заголовка: интерфейс занимает окно целиком, система
-    // рисует поверх него только кнопки «свернуть/развернуть/закрыть» (цвета —
-    // фон и основной текст приложения). Окно тянут за верхнюю полосу
-    // (.window-drag) и за блок с названием в боковой панели.
+    // рисует поверх него только кнопки «свернуть/развернуть/закрыть» — на
+    // прозрачном фоне, значки цвета основного текста приложения. Окно тянут
+    // за верхнюю полосу (.window-drag) и за блок с названием в боковой панели.
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#f4f7f4", symbolColor: "#18271e", height: 40 },
+    titleBarOverlay: { color: WINDOW_CONTROLS.color, symbolColor: WINDOW_CONTROLS.symbol, height: WINDOW_CONTROLS.height },
     icon: icon ? nativeImage.createFromPath(icon) : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -416,6 +422,21 @@ function createWindow() {
 function registerIpc() {
   ipcMain.on("agro:app-ready", (event) => {
     if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) revealMainWindow();
+  });
+
+  ipcMain.on("agro:window-controls", (event, onDark) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+    if (typeof win.setTitleBarOverlay !== "function") return;
+    try {
+      win.setTitleBarOverlay({
+        color: WINDOW_CONTROLS.color,
+        symbolColor: onDark === true ? WINDOW_CONTROLS.symbolOnDark : WINDOW_CONTROLS.symbol,
+        height: WINDOW_CONTROLS.height,
+      });
+    } catch (error) {
+      console.error("Не удалось обновить кнопки окна", error);
+    }
   });
 
   ipcMain.handle("agro:get-app-info", () => ({

@@ -24,7 +24,7 @@ import { createNote } from "../../components/panel.js";
 import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
 import { DEFAULT_BASEMAP, MAX_ZOOM, WORLD_BOUNDS, createBasemap, watchTiles } from "./basemaps.js";
-import { runForecast as requestForecast } from "../../services/forecast-service.js";
+import { NO_VARIETY, runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
 import { toast } from "../../components/toast.js";
@@ -58,7 +58,8 @@ export function createMapPage(context = {}) {
   const coordsControl = h("div", { class: "control control--readonly" }, [coordsText]);
   const coordsField = h("div", { class: "field" }, [h("span", { class: "field__label", text: "Точка на карте" }), coordsControl]);
 
-  const varietySelect = createSelectField({ label: "Сорт", options: [], value: "", placeholder: "Выберите сорт" });
+  // Пустой пункт — «Без сорта»: прогноз можно запустить и без выбора сорта.
+  const varietySelect = createSelectField({ label: "Сорт", options: [], value: "", placeholder: NO_VARIETY.name });
 
   const periodHint = h("p", { class: "forecast-panel__hint" });
   const periodControl = createSegmented({
@@ -372,11 +373,8 @@ export function createMapPage(context = {}) {
       showFieldError("Сначала нажмите на карту и выберите поле");
       return;
     }
+    // Сорт не обязателен: без него движок получает метку NO_VARIETY.
     const variety = currentVariety();
-    if (!variety) {
-      showFieldError("Выберите сорт из справочника", { varietyId: "Выберите сорт" });
-      return;
-    }
     const normalized = normalizeStartMonth(startDate);
     if (normalized.value !== startDate) {
       startDate = normalized.value;
@@ -392,8 +390,8 @@ export function createMapPage(context = {}) {
     const request = {
       lat: point.lat,
       lon: point.lng,
-      varietyId: variety.id,
-      varietyName: variety.name,
+      varietyId: variety?.id ?? NO_VARIETY.id,
+      varietyName: variety?.name ?? NO_VARIETY.name,
       rangeMonths: period,
       targetDate: startDate,
     };
@@ -429,7 +427,9 @@ export function createMapPage(context = {}) {
   function syncVarieties() {
     const varieties = appState?.state.varieties ?? [];
     const options = varieties.map((variety) => ({ value: variety.id, label: varietyLabel(variety) }));
-    if (!varieties.some((variety) => variety.id === varietyId)) varietyId = options.length > 0 ? options[0].value : null;
+    // Сорт не подставляется автоматически: пусто — значит «Без сорта».
+    // Удалённый сорт тоже превращается в «Без сорта».
+    if (varietyId && !varieties.some((variety) => variety.id === varietyId)) varietyId = null;
     varietySelect.setOptions(options, varietyId ?? "");
     renderVarietyHint(options.length);
   }
