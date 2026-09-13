@@ -1,7 +1,7 @@
 {
   "name": "agroprognoz-corn",
   "productName": "AgroPrognoz",
-  "version": "0.1.6",
+  "version": "0.1.13",
   "private": true,
   "type": "module",
   "description": "АгроПрогноз — Кукуруза: выбор территории, параметры прогноза и погодные показатели для выращивания кукурузы.",
@@ -14,13 +14,14 @@
   "scripts": {
     "prepare:assets": "node scripts/prepare-assets.mjs",
     "icon": "node scripts/build-icon.mjs",
+    "splash": "node scripts/build-splash.mjs",
     "dev": "node scripts/dev.mjs",
     "preview": "node scripts/preview.mjs",
     "start": "electron .",
     "build": "vite build",
-    "test": "node --test tests/date-period.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs",
+    "test": "node --test tests/date-period.test.mjs tests/month-input.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs",
     "test:smoke": "node tests/smoke/run-smoke.mjs",
-    "dist:win": "electron-builder --win portable"
+    "dist:win": "node scripts/patch-portable-nsi.mjs && electron-builder --win portable"
   },
   "dependencies": {
     "@fontsource/inter": "5.3.0",
@@ -74,7 +75,8 @@
     },
     "portable": {
       "artifactName": "AgroPrognoz-${version}-portable.exe",
-      "requestExecutionLevel": "user"
+      "requestExecutionLevel": "user",
+      "splashImage": "build/splash.bmp"
     }
   }
 }

@@ -49,6 +49,29 @@ function renderBoot(message, { tone = "info" } = {}) {
   );
 }
 
+/**
+ * В Electron главное окно скрыто за экраном загрузки, пока интерфейс не
+ * построен. Сигнал отправляется, когда на экране уже есть что показать:
+ * оболочка с первым разделом или понятное сообщение об ошибке.
+ */
+function revealWindow() {
+  if (!window.agro?.notifyReady) return;
+  let sent = false;
+  const notify = () => {
+    if (sent) return;
+    sent = true;
+    try {
+      window.agro.notifyReady();
+    } catch (error) {
+      console.error("Сигнал о готовности интерфейса не отправлен", error);
+    }
+  };
+  // После первого кадра — чтобы окно открылось уже с отрисованным интерфейсом;
+  // таймер на случай, если кадры в скрытом окне не приходят.
+  window.requestAnimationFrame(() => window.requestAnimationFrame(notify));
+  window.setTimeout(notify, 300);
+}
+
 function renderFatal({ title, text, actions }) {
   root.replaceChildren(
     h("div", { class: "boot" }, [
@@ -59,6 +82,7 @@ function renderFatal({ title, text, actions }) {
       ]),
     ]),
   );
+  revealWindow();
 }
 
 function reload() {
@@ -217,7 +241,9 @@ async function startApp(db) {
   root.replaceChildren(shell.node);
 
   routerRef.current = createRouter({ mount: shell.main, routes, context });
+  syncWindowControls();
   await routerRef.current.start();
+  revealWindow();
 
   installGlobalGuards(db);
   window.addEventListener("pagehide", () => {
@@ -236,6 +262,23 @@ async function resolveVersion() {
     console.error("Версия приложения не получена", error);
     return fallback;
   }
+}
+
+/**
+ * Кнопки окна Electron рисуются на прозрачном фоне поверх интерфейса: над
+ * картой (спутниковый снимок) их значки светлые, на остальных разделах — тёмные.
+ */
+function syncWindowControls() {
+  if (!window.agro?.setWindowControlsOnDark) return;
+  let last = null;
+  const apply = (snapshot) => {
+    const onDark = snapshot.route?.name === "map";
+    if (onDark === last) return;
+    last = onDark;
+    window.agro.setWindowControlsOnDark(onDark);
+  };
+  state.subscribe(apply);
+  apply(state.state);
 }
 
 /** Перед закрытием окна в Electron отдаём накопленные записи на диск. */

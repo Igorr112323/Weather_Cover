@@ -10,7 +10,7 @@ import { h } from "../../lib/dom.js";
 import { fmtDateTimeRu, fmtInt, NOT_AVAILABLE } from "../../lib/format.js";
 import { typeLabel } from "../../services/validation.js";
 import { createButton } from "../../components/button.js";
-import { createSearchField, createSelectField } from "../../components/field.js";
+import { createSearchField } from "../../components/field.js";
 import { createKeyValue, createPanel } from "../../components/panel.js";
 import { createDataTable } from "../../components/data-table.js";
 import { createEmptyState, createNoResultsState } from "../../components/empty-state.js";
@@ -45,22 +45,6 @@ export function createVarietiesPage(context = {}) {
         filters.query = value;
         refresh();
       },
-    });
-
-    const typeSelect = createSelectField({
-      label: "Тип",
-      value: filters.type,
-      options: [
-        { value: "all", label: "Любой тип" },
-        { value: "sort", label: "Сорт" },
-        { value: "hybrid", label: "Гибрид" },
-      ],
-    });
-    const typeWrap = h("div", { class: "field", style: "min-width:150px" }, [typeSelect.querySelector(".control")]);
-    typeSelect.select.setAttribute("aria-label", "Фильтр по типу");
-    typeSelect.select.addEventListener("change", () => {
-      filters.type = typeSelect.getValue() || "all";
-      refresh();
     });
 
     table = createDataTable({
@@ -100,7 +84,7 @@ export function createVarietiesPage(context = {}) {
 
     node.replaceChildren(
       h("div", { class: "page-head" }, [h("h1", { class: "page-title", text: "Сорта кукурузы" }), h("div", { class: "page-head__actions" }, [addButton])]),
-      h("div", { class: "toolbar" }, [search, typeWrap]),
+      h("div", { class: "toolbar" }, [search]),
       h("div", { class: "split" }, [listHost, detailHost]),
     );
 

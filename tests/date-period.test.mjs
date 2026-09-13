@@ -126,3 +126,59 @@ describe("addDays / listDates / weekday", () => {
     assert.equal(weekdayIndexMonday("2026-09-13"), 6);
   });
 });
+
+// ── Месяцы без дней: диапазон начала периода ──────────────────────────────
+
+import { isoFromMonthIndex, monthIndex, startOfMonth } from "../calculations/date-period.js";
+import { EARLIEST_MONTH, currentMonthIso, monthRange, normalizeStartMonth } from "../calculations/month-range.js";
+
+describe("месяцы: startOfMonth / monthIndex", () => {
+  it("startOfMonth даёт первое число", () => {
+    assert.equal(startOfMonth("2026-09-17"), "2026-09-01");
+    assert.equal(startOfMonth("2024-02-29"), "2024-02-01");
+    assert.throws(() => startOfMonth("2026-13-01"), RangeError);
+  });
+
+  it("monthIndex монотонен и обратим", () => {
+    assert.equal(monthIndex("2026-01-01") - monthIndex("2025-12-01"), 1);
+    assert.equal(monthIndex("1990-01-01"), 1990 * 12);
+    assert.equal(isoFromMonthIndex(monthIndex("2026-09-15")), "2026-09-01");
+    assert.ok(Number.isNaN(monthIndex("нет")));
+  });
+});
+
+describe("месяцы: диапазон 1990 … текущий месяц", () => {
+  const now = new Date(2026, 8, 11); // 11 сентября 2026 (локальное время)
+
+  it("нижняя граница — январь 1990, верхняя — текущий месяц", () => {
+    assert.equal(EARLIEST_MONTH, "1990-01-01");
+    assert.equal(currentMonthIso(now), "2026-09-01");
+    assert.deepEqual(monthRange(now), { minMonth: "1990-01-01", maxMonth: "2026-09-01" });
+  });
+
+  it("будущие месяцы недоступны и переносятся на текущий", () => {
+    assert.deepEqual(normalizeStartMonth("2026-10-01", now), { value: "2026-09-01", adjusted: true });
+    assert.deepEqual(normalizeStartMonth("2027-01-01", now), { value: "2026-09-01", adjusted: true });
+  });
+
+  it("месяцы раньше 1990 недоступны", () => {
+    assert.deepEqual(normalizeStartMonth("1989-12-01", now), { value: "2026-09-01", adjusted: true });
+    assert.deepEqual(normalizeStartMonth("1990-01-01", now), { value: "1990-01-01", adjusted: false });
+  });
+
+  it("любой день сохранённой даты приводится к первому числу", () => {
+    assert.deepEqual(normalizeStartMonth("2026-09-30", now), { value: "2026-09-01", adjusted: false });
+    assert.deepEqual(normalizeStartMonth("2001-05-17", now), { value: "2001-05-01", adjusted: false });
+  });
+
+  it("мусор вместо даты — текущий месяц без предупреждения", () => {
+    assert.deepEqual(normalizeStartMonth(null, now), { value: "2026-09-01", adjusted: false });
+    assert.deepEqual(normalizeStartMonth("2026-02-30", now), { value: "2026-09-01", adjusted: false });
+  });
+
+  it("период от первого числа месяца заканчивается концом месяца", () => {
+    assert.deepEqual(computePeriod("2026-09-01", 1), { startDate: "2026-09-01", endDate: "2026-09-30", days: 30 });
+    assert.deepEqual(computePeriod("2024-02-01", 1), { startDate: "2024-02-01", endDate: "2024-02-29", days: 29 });
+    assert.equal(computePeriod("1990-01-01", 6).endDate, "1990-06-30");
+  });
+});

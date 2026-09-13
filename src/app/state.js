@@ -53,7 +53,7 @@ export function createStore(initial = {}) {
 export const MAP_DEFAULTS = Object.freeze({
   center: { lat: 55.5, lng: 48 },
   zoom: 4,
-  layer: "light",
+  layer: "satellite",
   point: null,
   varietyId: null,
   startDate: null,

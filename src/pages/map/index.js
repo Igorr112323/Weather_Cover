@@ -1,8 +1,12 @@
 /**
  * Вкладка «Карта»: выбор точки, параметров прогноза и запуск движка.
  *
- * Карта занимает всю рабочую область справа от навигации — без отступов и рамки.
- * Состояние (центр, масштаб, слой, точка, сорт, дата, период) переживает
+ * Сценарий намеренно простой: спутниковая карта, клик в любом месте ставит
+ * точку (второй клик — переносит), справа — сорт, период и месяц начала.
+ * Мир показывается одной копией: минимальный масштаб подбирается под размер
+ * окна так, чтобы снимок закрывал всю карту, а за край (±180°) уехать нельзя.
+ * Максимальный масштаб ограничен уровнем, где снимки ещё есть (см. basemaps.js).
+ * Состояние (центр, масштаб, точка, сорт, месяц, период) переживает
  * переходы между вкладками и перезапуск приложения.
  */
 
@@ -10,24 +14,25 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { h, icon, setText } from "../../lib/dom.js";
-import { fmtCoord, fmtDateRu, fmtPeriodRu } from "../../lib/format.js";
-import { addMonths, computePeriod, isValidIsoDate, toOrdinal, todayIso } from "../../../calculations/date-period.js";
+import { fmtCoord, fmtPeriodRu } from "../../lib/format.js";
+import { computePeriod, isValidIsoDate } from "../../../calculations/date-period.js";
+import { monthRange, normalizeStartMonth } from "../../../calculations/month-range.js";
 import { debounce } from "../../lib/async.js";
-import { pushEscHandler } from "../../lib/overlays.js";
 import { createSegmented, createButton } from "../../components/button.js";
-import { createDateField } from "../../components/date-picker.js";
-import { createBadge, createNote } from "../../components/panel.js";
+import { createMonthField, fmtMonthRu } from "../../components/month-picker.js";
+import { createNote } from "../../components/panel.js";
 import { createSelectField } from "../../components/field.js";
 import { createProgressBar } from "../../components/empty-state.js";
-import { BASEMAPS, DEFAULT_BASEMAP, createBasemap, watchTiles } from "./basemaps.js";
-import { createCountryLayer, createRegionLayer, loadGeoData, REGION_CLICK_MAX_ZOOM, REGION_ZOOM_MIN } from "./geo-layers.js";
-import { createGraticule } from "./graticule.js";
-import { runForecast as requestForecast } from "../../services/forecast-service.js";
+import { DEFAULT_BASEMAP, MAX_ZOOM, WORLD_BOUNDS, createBasemap, watchTiles } from "./basemaps.js";
+import { NO_VARIETY, runForecast as requestForecast } from "../../services/forecast-service.js";
 import { setSetting } from "../../services/repositories.js";
 import { MAP_DEFAULTS } from "../../app/state.js";
 import { toast } from "../../components/toast.js";
 
-const POINT_PLACEHOLDER = "Выберите точку на карте";
+const POINT_PLACEHOLDER = "Нажмите на карту, чтобы выбрать поле";
+/** Ниже этого масштаба не уходим даже в очень узком окне. */
+const ABS_MIN_ZOOM = 2;
+const TILE_SIZE = 256;
 
 export function createMapPage(context = {}) {
   const { db, navigate, refreshVarieties, state: appState } = context;
@@ -35,22 +40,15 @@ export function createMapPage(context = {}) {
   let map = null;
   let tileLayer = null;
   let tileWatch = null;
-  let graticule = null;
-  let countryLayer = null;
-  let regionApi = null;
   let marker = null;
   let resizeObserver = null;
   let unsubscribe = null;
-  let popEsc = null;
   let destroyed = false;
-  let currentBasemap = DEFAULT_BASEMAP;
   let point = null;
   let varietyId = null;
   let period = MAP_DEFAULTS.rangeMonths;
-  let startDate = todayIso();
-  let minDate = todayIso();
-  let maxDate = addMonths(todayIso(), 12);
-  let restoreStack = [];
+  let { minMonth, maxMonth } = monthRange();
+  let startDate = maxMonth;
   let tilesFailed = false;
   let lastVarieties = null;
 
@@ -58,9 +56,10 @@ export function createMapPage(context = {}) {
 
   const coordsText = h("span", { class: "control__adorn", style: "flex:1;justify-content:flex-start;text-align:left", text: POINT_PLACEHOLDER });
   const coordsControl = h("div", { class: "control control--readonly" }, [coordsText]);
-  const coordsField = h("div", { class: "field" }, [h("span", { class: "field__label", text: "Координаты" }), coordsControl]);
+  const coordsField = h("div", { class: "field" }, [h("span", { class: "field__label", text: "Точка на карте" }), coordsControl]);
 
-  const varietySelect = createSelectField({ label: "Сорт", options: [], value: "", placeholder: "Выберите сорт" });
+  // Пустой пункт — «Без сорта»: прогноз можно запустить и без выбора сорта.
+  const varietySelect = createSelectField({ label: "Сорт", options: [], value: "", placeholder: NO_VARIETY.name });
 
   const periodHint = h("p", { class: "forecast-panel__hint" });
   const periodControl = createSegmented({
@@ -79,11 +78,11 @@ export function createMapPage(context = {}) {
     },
   });
 
-  const dateField = createDateField({
-    label: "Начало периода",
+  const monthField = createMonthField({
+    label: "Месяц начала",
     value: startDate,
-    minDate,
-    maxDate,
+    minMonth,
+    maxMonth,
     onChange: (iso) => {
       startDate = iso;
       updatePeriodLine();
@@ -103,49 +102,32 @@ export function createMapPage(context = {}) {
   const errorHost = h("div");
   const hintsHost = h("div", { style: "display:flex;flex-direction:column;gap:8px" });
 
-  const resetButton = h(
-    "button",
-    { type: "button", class: "btn-icon", "aria-label": "Сбросить вид карты", title: "Сбросить вид карты", onclick: () => resetView() },
-    [icon("locate", { size: 16 })],
-  );
-
   const panel = h("section", { class: "forecast-panel", "aria-label": "Параметры прогноза" }, [
-    h("div", { class: "forecast-panel__head" }, [h("h2", { class: "forecast-panel__title", text: "Прогноз" }), resetButton]),
+    h("div", { class: "forecast-panel__head" }, [h("h2", { class: "forecast-panel__title", text: "Прогноз" })]),
     coordsField,
     hintsHost,
     varietySelect,
     h("div", { class: "field" }, [h("span", { class: "field__label", text: "Период" }), periodControl, periodHint]),
-    dateField,
+    monthField,
     errorHost,
     runButton,
-    h("div", { class: "forecast-panel__row" }, [createBadge("Демонстрационный режим", { tone: "warning", iconName: "flask-conical" })]),
     progressHost,
   ]);
 
   const container = h("div", { class: "map-canvas" });
-  const layerSwitch = createSegmented({
-    label: "Подложка карты",
-    value: DEFAULT_BASEMAP,
-    options: Object.values(BASEMAPS).map((basemap) => ({ value: basemap.id, label: basemap.label })),
-    onChange: (value) => setBasemap(value, { save: true }),
-  });
-  const zoomControls = h("div", { class: "map-card" }, [
-    h("div", { class: "map-controls__row" }, [
-      h("button", { type: "button", class: "map-btn", "aria-label": "Приблизить", onclick: () => map?.zoomIn() }, [icon("plus", { size: 16 })]),
-      h("button", { type: "button", class: "map-btn", "aria-label": "Отдалить", onclick: () => map?.zoomOut() }, [icon("minus", { size: 16 })]),
-    ]),
-  ]);
+  const zoomInButton = h("button", { type: "button", class: "map-btn", "aria-label": "Приблизить", title: "Приблизить", onclick: () => map?.zoomIn() }, [icon("plus", { size: 16 })]);
+  const zoomOutButton = h("button", { type: "button", class: "map-btn", "aria-label": "Отдалить", title: "Отдалить", onclick: () => map?.zoomOut() }, [icon("minus", { size: 16 })]);
+  const zoomControls = h("div", { class: "map-card" }, [h("div", { class: "map-controls__row" }, [zoomInButton, zoomOutButton])]);
 
   const mapErrorHost = h("div");
   const node = h("div", { class: "map-page" }, [
     container,
-    h("div", { class: "map-ui map-ui--left" }, [layerSwitch, zoomControls]),
+    h("div", { class: "map-ui map-ui--left" }, [zoomControls]),
     h("div", { class: "map-ui map-ui--right" }, [panel]),
     mapErrorHost,
   ]);
 
   const saveStateSoon = debounce(() => saveState(), 1200);
-  const syncRegionViewSoon = debounce(() => syncRegionVisibility(), 100);
 
   function prefersReducedMotion() {
     return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -156,41 +138,42 @@ export function createMapPage(context = {}) {
   function createMap() {
     const saved = appState?.state.map ?? MAP_DEFAULTS;
     const center = validCenter(saved.center) ? saved.center : MAP_DEFAULTS.center;
-    const zoom = Number.isFinite(saved.zoom) ? clampZoom(saved.zoom) : MAP_DEFAULTS.zoom;
+    const minZoom = minZoomFor(container);
+    const zoom = Number.isFinite(saved.zoom) ? clampZoom(saved.zoom, minZoom) : Math.max(MAP_DEFAULTS.zoom, minZoom);
 
     map = L.map(container, {
       center: [center.lat, center.lng],
       zoom,
-      minZoom: 2,
-      maxZoom: 19,
+      minZoom,
+      maxZoom: MAX_ZOOM,
       zoomControl: false,
       attributionControl: true,
       keyboard: true,
-      worldCopyJump: false,
       fadeAnimation: !prefersReducedMotion(),
       zoomAnimation: !prefersReducedMotion(),
-      maxBounds: [
-        [-85, -200],
-        [85, 200],
-      ],
+      // Одна копия мира: карту нельзя утащить за ±180°, поэтому соседние
+      // копии Евразии и Америки по бокам не появляются.
+      worldCopyJump: false,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1,
+      // Щипок на тачпаде не «перелетает» за предельный масштаб: иначе слой
+      // на мгновение снимает все тайлы, и карта мигает пустотой.
+      bounceAtZoomLimits: false,
     });
 
-    graticule = createGraticule(map);
-    setBasemap(BASEMAPS[saved.layer] ? saved.layer : DEFAULT_BASEMAP);
+    setBasemap();
 
-    // Выбор точки — обычный клик по свободной поверхности карты.
+    // Единственное действие на карте: клик ставит (или переносит) точку.
     map.on("click", (event) => selectPoint(event.latlng.lat, event.latlng.lng));
-    map.on("moveend zoomend", () => {
-      syncRegionViewSoon();
-      saveStateSoon();
-    });
-
-    void loadGeo();
+    map.on("moveend zoomend", () => saveStateSoon());
+    map.on("zoomend zoomlevelschange", () => syncZoomButtons());
+    syncZoomButtons();
 
     if (typeof ResizeObserver === "function") {
       resizeObserver = new ResizeObserver(() => {
         if (destroyed || !map) return;
         map.invalidateSize({ animate: false });
+        syncMinZoom();
       });
       resizeObserver.observe(container);
     }
@@ -200,92 +183,32 @@ export function createMapPage(context = {}) {
     return center && Number.isFinite(center.lat) && Number.isFinite(center.lng);
   }
 
-  function clampZoom(value) {
-    return Math.min(19, Math.max(2, Math.round(Number(value))));
+  /**
+   * Минимальный масштаб, при котором одна копия мира закрывает контейнер
+   * целиком: сторона мира 256·2^z px должна быть не меньше большей стороны
+   * контейнера. Иначе Leaflet показывал бы соседние копии мира или пустоту.
+   */
+  function minZoomFor(element) {
+    const side = Math.max(element.clientWidth, element.clientHeight, TILE_SIZE);
+    const zoom = Math.ceil(Math.log2(side / TILE_SIZE));
+    return Math.min(MAX_ZOOM, Math.max(ABS_MIN_ZOOM, zoom));
   }
 
-  async function loadGeo() {
-    const data = await loadGeoData();
-    if (destroyed || !map) return;
-
-    if (data.countries) {
-      countryLayer = createCountryLayer({
-        onCountryClick: (event) => selectPoint(event.latlng.lat, event.latlng.lng),
-      });
-      countryLayer.addData(data.countries);
-      countryLayer.addTo(map);
-    }
-
-    if (data.regions) {
-      regionApi = createRegionLayer({
-        onRegionClick: (featureLayer, event) => {
-          // Явное разделение: на масштабе 4–6 клик по региону приближает регион,
-          // выбор точки при этом не выполняется. Вне этого диапазона клик означает точку.
-          // События слоя не всплывают до карты (bubblingMouseEvents: false), поэтому
-          // точку выбираем здесь же, а не надеемся на «проваливание» клика.
-          if (map.getZoom() < REGION_ZOOM_MIN || map.getZoom() > REGION_CLICK_MAX_ZOOM) {
-            selectPoint(event.latlng.lat, event.latlng.lng);
-            return true;
-          }
-          focusRegion(featureLayer, event);
-          return true;
-        },
-      });
-      regionApi.layer.addData(data.regions);
-      syncRegionVisibility();
-    }
-
-    if (data.missing) {
-      hintsHost.append(
-        h("p", { class: "forecast-panel__hint", text: "Границы стран и регионов недоступны — точка выбирается кликом по карте." }),
-      );
-    }
-    updateHints();
-  }
-
-  function syncRegionVisibility() {
-    if (!map || !regionApi) return;
-    const zoom = map.getZoom();
-    const present = map.hasLayer(regionApi.layer);
-    const shouldShow = zoom >= REGION_ZOOM_MIN - 1;
-    if (shouldShow && !present) regionApi.layer.addTo(map);
-    if (!shouldShow && present) map.removeLayer(regionApi.layer);
-    if (present || shouldShow) {
-      const clickable = zoom <= REGION_CLICK_MAX_ZOOM;
-      regionApi.layer.setStyle({ weight: clickable ? 0.9 : 0.6, opacity: clickable ? 0.6 : 0.4 });
-    }
-    updateHints();
-  }
-
-  function focusRegion(featureLayer, event) {
-    restoreStack.push({ center: map.getCenter(), zoom: map.getZoom(), basemap: currentBasemap });
-    regionApi.markSelected(featureLayer);
-    setBasemap("satellite", { save: false });
-    map.flyToBounds(featureLayer.getBounds().pad(0.12), { duration: prefersReducedMotion() ? 0 : 0.6, maxZoom: 8 });
-    if (event?.originalEvent) L.DomEvent.stop(event.originalEvent);
-    saveStateSoon();
-  }
-
-  function restorePreviousView() {
-    if (restoreStack.length === 0 || !map) return false;
-    const snapshot = restoreStack.pop();
-    regionApi?.clearSelected();
-    setBasemap(snapshot.basemap, { save: false });
-    map.flyTo(snapshot.center, snapshot.zoom, { duration: prefersReducedMotion() ? 0 : 0.45 });
-    updateHints();
-    saveStateSoon();
-    return true;
-  }
-
-  function resetView() {
+  function syncMinZoom() {
     if (!map) return;
-    restoreStack = [];
-    regionApi?.clearSelected();
-    setBasemap(DEFAULT_BASEMAP, { save: true });
-    map.flyTo([MAP_DEFAULTS.center.lat, MAP_DEFAULTS.center.lng], MAP_DEFAULTS.zoom, {
-      duration: prefersReducedMotion() ? 0 : 0.45,
-    });
-    updateHints();
+    const minZoom = minZoomFor(container);
+    // setMinZoom сам приближает карту, если текущий масштаб стал меньше нового минимума.
+    if (map.getMinZoom() !== minZoom) map.setMinZoom(minZoom);
+  }
+
+  function syncZoomButtons() {
+    if (!map) return;
+    zoomInButton.disabled = map.getZoom() >= map.getMaxZoom();
+    zoomOutButton.disabled = map.getZoom() <= map.getMinZoom();
+  }
+
+  function clampZoom(value, minZoom = map?.getMinZoom() ?? minZoomFor(container)) {
+    return Math.min(MAX_ZOOM, Math.max(minZoom, Math.round(Number(value))));
   }
 
   /* ── Точка и маркер ───────────────────────────────────────────────────── */
@@ -301,25 +224,26 @@ export function createMapPage(context = {}) {
 
   function paintPoint({ pulse = false } = {}) {
     if (!map || !point) return;
-    const iconDefinition = L.divIcon({ className: "map-grain-icon", iconSize: [24, 24], iconAnchor: [12, 12] });
-    let target = marker;
-    if (target) {
-      target.setLatLng([point.lat, point.lng]);
-      target.setIcon(iconDefinition);
-    } else {
-      target = L.marker([point.lat, point.lng], {
+    if (!marker) {
+      // Содержимое маркера собирается узлами, строковой HTML-разметки нет.
+      const iconDefinition = L.divIcon({ className: "map-grain-icon", iconSize: [24, 24], iconAnchor: [12, 12], html: h("span", { class: "grain" }) });
+      marker = L.marker([point.lat, point.lng], {
         icon: iconDefinition,
         interactive: false,
         keyboard: false,
         zIndexOffset: 900,
       }).addTo(map);
-      marker = target;
+    } else {
+      marker.setLatLng([point.lat, point.lng]);
     }
-    const element = target.getElement();
-    if (element) {
-      // Содержимое маркера собирается узлами, строковой HTML-разметки нет
-      const grain = h("span", { class: ["grain", pulse && !prefersReducedMotion() ? "grain--pulse" : ""].filter(Boolean).join(" ") });
-      element.replaceChildren(h("span", { class: "map-grain-icon" }, [grain]));
+    const grain = marker.getElement()?.querySelector(".grain");
+    if (grain) {
+      grain.classList.remove("grain--pulse");
+      if (pulse && !prefersReducedMotion()) {
+        // Перезапуск анимации при повторном клике: сначала снять класс, затем вернуть.
+        void grain.offsetWidth;
+        grain.classList.add("grain--pulse");
+      }
     }
   }
 
@@ -352,7 +276,7 @@ export function createMapPage(context = {}) {
     }
   }
 
-  /* ── Период и подсказки ───────────────────────────────────────────────── */
+  /* ── Период ───────────────────────────────────────────────────────────── */
 
   function updatePeriodLine() {
     if (!isValidIsoDate(startDate)) {
@@ -367,41 +291,30 @@ export function createMapPage(context = {}) {
     }
   }
 
-  function updateHints() {
-    for (const stale of hintsHost.querySelectorAll("[data-hint='region'], [data-hint='point']")) stale.remove();
-    if (restoreStack.length > 0) {
-      hintsHost.append(
-        h("div", { class: "note note--info", dataset: { hint: "region" } }, [
-          icon("info", { size: 15 }),
-          h("span", {}, [
-            h("span", { text: "Регион выделен. " }),
-            h("kbd", { text: "Esc", style: "font:inherit;font-weight:600" }),
-            h("span", { text: " — вернуть прежний вид и слой." }),
-          ]),
-        ]),
-      );
+  /** Диапазон месяцев пересчитывается при каждом показе: наступил новый месяц — он стал доступен. */
+  function refreshMonthRange({ announce = false } = {}) {
+    ({ minMonth, maxMonth } = monthRange());
+    monthField.setRange(minMonth, maxMonth);
+    const normalized = normalizeStartMonth(startDate);
+    if (normalized.value !== startDate) {
+      startDate = normalized.value;
+      monthField.setValue(startDate, { notify: false });
+      if (announce && normalized.adjusted) {
+        monthField.setError(`Месяц вне доступного диапазона — начало перенесено на ${fmtMonthRu(startDate)}`);
+      }
     }
-    if (point && map && map.getZoom() <= REGION_CLICK_MAX_ZOOM && map.getZoom() >= REGION_ZOOM_MIN && regionApi) {
-      hintsHost.append(
-        h("p", { class: "forecast-panel__hint", dataset: { hint: "point" }, text: "Точка выбрана на этом же месте: клик по региону приближает регион, а не перемещает точку." }),
-      );
-    }
+    updatePeriodLine();
   }
 
   /* ── Слой карты ───────────────────────────────────────────────────────── */
 
-  function setBasemap(id, { save = true } = {}) {
-    const basemap = createBasemap(id);
-    currentBasemap = basemap.id;
-    for (const button of layerSwitch.querySelectorAll(".segmented__btn")) {
-      button.setAttribute("aria-pressed", button.dataset.value === currentBasemap ? "true" : "false");
-    }
+  function setBasemap() {
     if (!map) return;
     if (tileLayer) {
       map.removeLayer(tileLayer);
       tileLayer = null;
     }
-    tileLayer = basemap.create();
+    tileLayer = createBasemap(DEFAULT_BASEMAP).create();
     tileWatch = watchTiles(tileLayer, {
       onFailure: () => {
         if (tilesFailed) return;
@@ -414,14 +327,13 @@ export function createMapPage(context = {}) {
       },
     });
     tileLayer.addTo(map);
-    if (save) saveStateSoon();
   }
 
   function paintMapError() {
     mapErrorHost.replaceChildren(
       h("div", { class: "map-error", role: "status" }, [
         icon("cloud-off", { size: 16 }),
-        h("span", { text: "Не удалось загрузить карту" }),
+        h("span", { text: "Не удалось загрузить спутниковые снимки. Проверьте подключение к интернету." }),
         createButton({
           label: "Повторить",
           tone: "secondary",
@@ -431,7 +343,7 @@ export function createMapPage(context = {}) {
             mapErrorHost.replaceChildren();
             button.setLoading(true, "Повторяем…");
             tileWatch?.reset();
-            setBasemap(currentBasemap, { save: false });
+            setBasemap();
             window.setTimeout(() => button.setLoading(false, "Повторить"), 1200);
           },
         }),
@@ -444,11 +356,11 @@ export function createMapPage(context = {}) {
   function showFieldError(message, fields = null) {
     errorHost.replaceChildren();
     varietySelect.clearError();
-    dateField.clearError();
+    monthField.clearError();
     if (!message) return;
     errorHost.append(createNote(message, { tone: "danger" }));
     if (fields?.varietyId) varietySelect.setError(fields.varietyId);
-    if (fields?.targetDate) dateField.setError(fields.targetDate);
+    if (fields?.targetDate) monthField.setError(fields.targetDate);
   }
 
   function currentVariety() {
@@ -458,13 +370,16 @@ export function createMapPage(context = {}) {
 
   async function startForecast() {
     if (!point) {
-      showFieldError("Сначала выберите точку на карте");
+      showFieldError("Сначала нажмите на карту и выберите поле");
       return;
     }
+    // Сорт не обязателен: без него движок получает метку NO_VARIETY.
     const variety = currentVariety();
-    if (!variety) {
-      showFieldError("Выберите сорт из справочника", { varietyId: "Выберите сорт" });
-      return;
+    const normalized = normalizeStartMonth(startDate);
+    if (normalized.value !== startDate) {
+      startDate = normalized.value;
+      monthField.setValue(startDate, { notify: false });
+      updatePeriodLine();
     }
 
     showFieldError(null);
@@ -475,8 +390,8 @@ export function createMapPage(context = {}) {
     const request = {
       lat: point.lat,
       lon: point.lng,
-      varietyId: variety.id,
-      varietyName: variety.name,
+      varietyId: variety?.id ?? NO_VARIETY.id,
+      varietyName: variety?.name ?? NO_VARIETY.name,
       rangeMonths: period,
       targetDate: startDate,
     };
@@ -512,7 +427,9 @@ export function createMapPage(context = {}) {
   function syncVarieties() {
     const varieties = appState?.state.varieties ?? [];
     const options = varieties.map((variety) => ({ value: variety.id, label: varietyLabel(variety) }));
-    if (!varieties.some((variety) => variety.id === varietyId)) varietyId = options.length > 0 ? options[0].value : null;
+    // Сорт не подставляется автоматически: пусто — значит «Без сорта».
+    // Удалённый сорт тоже превращается в «Без сорта».
+    if (varietyId && !varieties.some((variety) => variety.id === varietyId)) varietyId = null;
     varietySelect.setOptions(options, varietyId ?? "");
     renderVarietyHint(options.length);
   }
@@ -545,7 +462,7 @@ export function createMapPage(context = {}) {
     return {
       center: center ? { lat: center.lat, lng: center.lng } : MAP_DEFAULTS.center,
       zoom: map?.getZoom() ?? MAP_DEFAULTS.zoom,
-      layer: currentBasemap,
+      layer: DEFAULT_BASEMAP,
       point: point ? { lat: point.lat, lng: point.lng } : null,
       varietyId,
       startDate,
@@ -572,22 +489,13 @@ export function createMapPage(context = {}) {
     if (validCenter(saved.center)) {
       map.setView([saved.center.lat, saved.center.lng], clampZoom(saved.zoom ?? MAP_DEFAULTS.zoom), { animate: false });
     }
-    if (BASEMAPS[saved.layer]) setBasemap(saved.layer, { save: false });
 
     period = [1, 3, 6].includes(saved.rangeMonths) ? saved.rangeMonths : MAP_DEFAULTS.rangeMonths;
     periodControl.setValue(period);
 
-    minDate = todayIso();
-    maxDate = addMonths(minDate, 12);
-    dateField.setRange(minDate, maxDate);
-    const savedStart = isValidIsoDate(saved.startDate) ? saved.startDate : null;
-    const outOfRange = savedStart && (toOrdinal(savedStart) < toOrdinal(minDate) || toOrdinal(savedStart) > toOrdinal(maxDate));
-    startDate = !savedStart || outOfRange ? minDate : savedStart;
-    dateField.setValue(startDate, { notify: false });
-    if (outOfRange) {
-      dateField.setError(`Дата вне доступного диапазона — начало периода перенесено на ${fmtDateRu(startDate)}`);
-    }
-    updatePeriodLine();
+    startDate = isValidIsoDate(saved.startDate) ? saved.startDate : maxMonth;
+    monthField.setValue(startDate, { notify: false });
+    refreshMonthRange({ announce: true });
 
     if (saved.point && Number.isFinite(saved.point.lat) && Number.isFinite(saved.point.lng)) {
       point = { lat: saved.point.lat, lng: saved.point.lng };
@@ -597,16 +505,11 @@ export function createMapPage(context = {}) {
 
     varietyId = typeof saved.varietyId === "string" ? saved.varietyId : null;
     syncVarieties();
-    syncRegionVisibility();
   }
 
   /* ── Жизненный цикл страницы ──────────────────────────────────────────── */
 
-  function subscribeOverlays() {
-    popEsc = pushEscHandler({
-      node: panel,
-      onEscape: () => restorePreviousView(),
-    });
+  function subscribeState() {
     unsubscribe = appState?.subscribe((snapshotState) => {
       if (snapshotState.varieties !== lastVarieties) {
         lastVarieties = snapshotState.varieties;
@@ -620,43 +523,36 @@ export function createMapPage(context = {}) {
   return {
     node,
     show() {
-      subscribeOverlays();
+      subscribeState();
       if (!map && !destroyed) {
         createMap();
         applySaved(appState?.state.map ?? null);
+        updatePeriodLine();
         return;
       }
-      // Повторный вход: только пересчёт доступного диапазона дат и размеров карты
-      minDate = todayIso();
-      maxDate = addMonths(minDate, 12);
-      dateField.setRange(minDate, maxDate);
+      // Повторный вход: пересчёт доступных месяцев и размеров карты.
+      refreshMonthRange();
       syncVarieties();
-      updatePeriodLine();
-      updateHints();
       window.requestAnimationFrame(() => map?.invalidateSize({ animate: false }));
     },
     hide() {
+      monthField.closePicker();
       unsubscribe?.();
       unsubscribe = null;
-      popEsc?.();
-      popEsc = null;
       void saveState();
     },
     destroy() {
       destroyed = true;
       saveStateSoon.cancel();
+      monthField.closePicker();
       unsubscribe?.();
-      popEsc?.();
       resizeObserver?.disconnect();
-      graticule?.destroy();
       if (map) {
         map.off();
         map.remove();
       }
       map = null;
       marker = null;
-      countryLayer = null;
-      regionApi = null;
     },
     setError(error) {
       showFieldError(error?.message ?? "Не удалось открыть карту");

@@ -7,6 +7,20 @@
   min-height: 0;
 }
 
+/* Полоса захвата окна: строки заголовка нет, система рисует только кнопки
+   окна справа вверху, а за эту невидимую полосу окно перетаскивают.
+   Содержимое под ней сдвинуто вниз на var(--titlebar-h). */
+.window-drag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--titlebar-h);
+  z-index: 1300;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
 /* ── Боковая панель ─────────────────────────────────────────── */
 .sidebar {
   display: flex;
@@ -21,6 +35,9 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  /* Блок с названием — вторая ручка для перетаскивания окна. */
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .sidebar__logo {
@@ -101,32 +118,9 @@
   color: var(--green);
 }
 
-.sidebar__foot {
-  margin-top: auto;
-  padding: var(--sp-3) var(--sp-4);
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar__version {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-muted);
-  font-variant-numeric: var(--tabular);
-}
-
-.sidebar__mode {
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--text-muted);
-}
-
 /* Узкий режим: только иконки с подсказками */
 .shell--narrow .sidebar__names,
-.shell--narrow .nav-item__label,
-.shell--narrow .sidebar__mode {
+.shell--narrow .nav-item__label {
   display: none;
 }
 
@@ -138,11 +132,6 @@
 .shell--narrow .nav-item {
   justify-content: center;
   padding: 0;
-}
-
-.shell--narrow .sidebar__foot {
-  align-items: center;
-  padding: var(--sp-3) var(--sp-2);
 }
 
 /* ── Рабочая область ────────────────────────────────────────── */
@@ -161,6 +150,7 @@
 
 .page {
   padding: var(--page-pad);
+  padding-top: calc(var(--page-pad) + var(--titlebar-h));
   width: 100%;
   max-width: 1680px;
   display: flex;
@@ -221,7 +211,7 @@
 }
 
 .map-ui--left {
-  top: 20px;
+  top: calc(20px + var(--titlebar-h));
   left: 20px;
   display: flex;
   flex-direction: column;
@@ -230,10 +220,10 @@
 }
 
 .map-ui--right {
-  top: 20px;
+  top: calc(20px + var(--titlebar-h));
   right: 20px;
   width: 320px;
-  max-height: calc(100% - 40px);
+  max-height: calc(100% - 40px - var(--titlebar-h));
   overflow: auto;
 }
 

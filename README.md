@@ -38,6 +38,10 @@ AGRO_DEV_SERVER=http://localhost:5173 npm start
 
 Production-режим Electron: `npm run build`, затем `npm start`
 (окно открывается через внутренний протокол `app://`, dev-сервер не нужен).
+Системной строки заголовка у окна нет: поверх интерфейса рисуются только
+кнопки окна на прозрачном фоне (`titleBarOverlay`; над картой значки светлые,
+на остальных разделах тёмные), перетаскивание — за верхнюю полосу и блок
+с названием в боковой панели; в браузере высота этой полосы равна нулю.
 
 ## Команды
 
@@ -46,13 +50,14 @@ Production-режим Electron: `npm run build`, затем `npm start`
 | `npm install` | Установка зависимостей |
 | `npm run prepare:assets` | Копирование иконок Lucide из npm-пакета и подготовка GeoJSON (страны + регионы России). Флаги: `--icons`, `--geo`, `--offline`. Без сети оставляет ранее подготовленные файлы |
 | `npm run icon` | Растеризация иконки (sharp, локально): PNG 16–512 и ICO 16/32/48/256 в `build/` |
+| `npm run splash` | Заставка portable EXE `build/splash.bmp` — снимок `dist/splash.html` (нужны `npm run build` и Playwright Chromium); результат коммитится |
 | `npm run dev` | Dev-сервер Vite на `0.0.0.0:5173` (браузерная разработка и предпросмотр) |
 | `npm run preview` | Раздача собранного `dist/` на `0.0.0.0:4173` (production-предпросмотр) |
 | `npm start` | Запуск Electron (production — из `dist/`, dev — из `AGRO_DEV_SERVER`) |
 | `npm run build` | Production-сборка renderer в `dist/` |
 | `npm test` | Unit-тесты (Node test runner): календарь, движок, база, CSV |
 | `npm run test:smoke` | Браузерный smoke-тест сценария (нужен Playwright Chromium и запущенный сервер, см. ниже) |
-| `npm run dist:win` | Сборка Windows portable EXE в `release/` |
+| `npm run dist:win` | Сборка Windows portable EXE в `release/` (перед сборкой `scripts/patch-portable-nsi.mjs` правит шаблон electron-builder: заставка NSIS держится до первого окна приложения) |
 
 Smoke-тест:
 
@@ -67,10 +72,13 @@ npm run test:smoke                 # терминал 2
 
 ## Разделы приложения
 
-- **Карта** — Leaflet, подложки «Карта» (CARTO Positron) и «Спутник»
-  (Esri World Imagery). Клик выбирает точку, панель справа задаёт сорт,
-  период (1/3/6 мес.) и начало периода. Клик по региону России на масштабе
-  4–6 приближает регион и включает спутник, `Esc` возвращает вид.
+- **Карта** — Leaflet, спутниковая подложка Esri World Imagery одной
+  копией мира (без повторов по горизонтали, минимальный масштаб подбирается
+  под размер окна, максимальный — 18-й уровень). Тайлы запрашиваются с
+  `blankTile=false`: там, где снимка нужного масштаба нет, сервер отвечает
+  404 вместо заглушки «Map data not yet available», и слой показывает
+  увеличенный фрагмент снимка более мелкого масштаба. Клик выбирает точку,
+  панель справа задаёт сорт, период (1/3/6 мес.) и начало периода.
 - **Результаты прогноза** — показатели за период, графики температуры
   и осадков / таблица дневных значений, панель рисков, сохранение отчёта.
 - **Данные** — наборы, сформированные движком: поиск, фильтр периода,
@@ -122,8 +130,10 @@ SQLite через sql.js, единый интерфейс `src/services/persiste
 
 ## Источники геоданных и атрибуция
 
-Подготавливаются скриптом `npm run prepare:assets`, версии фиксируются
-в `src/assets/geo/manifest.json`:
+Карта показывает только спутниковые снимки — контуры стран и регионов на неё
+не выводятся. Геоданные ниже остаются в репозитории как подготовленные
+источники (скрипт `npm run prepare:assets`, версии фиксируются
+в `src/assets/geo/manifest.json`):
 
 - **Страны мира** — пакет `world-atlas@2.0.2`, файл `countries-110m.json`
   (TopoJSON на основе Natural Earth 1:110m). Лицензии: ISC (обёртка) +
@@ -194,8 +204,8 @@ Production отдаётся привилегированным протокол�
 electron/        main / preload / файловое хранилище / CSP
 src/             renderer: страницы, компоненты, сервисы, стили
 calculations/    демодвижок (точка замены) + календарная арифметика
-scripts/        prepare-assets, сборка иконки, dev/preview-серверы
-build/          иконка для сборки (генерируется npm run icon)
+scripts/        prepare-assets, сборка иконки и заставки, dev/preview-серверы
+build/          иконка (npm run icon) и заставка portable EXE (npm run splash)
 tests/          unit-тесты + Playwright smoke
 .github/        CI: тесты, smoke, Windows portable EXE
 ```

@@ -88,7 +88,11 @@ export default defineConfig({
     cssCodeSplit: false,
     sourcemap: false,
     rollupOptions: {
-      input: fileURLToPath(new URL("./src/index.html", import.meta.url)),
+      input: {
+        index: fileURLToPath(new URL("./src/index.html", import.meta.url)),
+        // Экран загрузки: отдельное окно Electron и источник build/splash.bmp
+        splash: fileURLToPath(new URL("./src/splash.html", import.meta.url)),
+      },
       output: {
         entryFileNames: "assets/[name].js",
         chunkFileNames: "assets/[name].js",

@@ -4,7 +4,7 @@
  * только рабочие разделы.
  */
 
-import { h, icon, setText } from "../lib/dom.js";
+import { h, icon } from "../lib/dom.js";
 import { state } from "./state.js";
 import iconUrl from "../assets/brand/app-icon.svg?url";
 
@@ -34,9 +34,6 @@ export function createShell({ navigate, onReady }) {
     nav.append(button);
   }
 
-  const versionNode = h("span", { class: "sidebar__version" });
-  const storageNode = h("span", { class: "sidebar__mode" });
-
   const sidebar = h("aside", { class: "sidebar" }, [
     h("div", { class: "sidebar__brand" }, [
       h("img", { class: "sidebar__logo", src: iconUrl, alt: "", width: "36", height: "36" }),
@@ -46,11 +43,13 @@ export function createShell({ navigate, onReady }) {
       ]),
     ]),
     nav,
-    h("div", { class: "sidebar__foot" }, [versionNode, storageNode]),
   ]);
 
   const main = h("main", { class: "main", id: "main", tabindex: "-1" });
-  const shell = h("div", { class: "shell" }, [sidebar, main]);
+  // Полоса захвата окна под скрытой системной строкой заголовка (Electron);
+  // в браузере её высота равна нулю.
+  const windowDrag = h("div", { class: "window-drag", "aria-hidden": "true" });
+  const shell = h("div", { class: "shell" }, [windowDrag, sidebar, main]);
 
   const media = window.matchMedia("(max-width: 1179px)");
   const applyNarrow = (isNarrow) => {
@@ -74,8 +73,6 @@ export function createShell({ navigate, onReady }) {
   else media.addListener(onMediaChange);
 
   const paint = (snapshot) => {
-    setText(versionNode, `Версия ${snapshot.appVersion ?? "0.0.0"}`);
-    setText(storageNode, snapshot.storageLabel ?? "");
     const active = snapshot.route?.nav ?? null;
     for (const [key, button] of navButtons) {
       if (key === active) button.setAttribute("aria-current", "page");

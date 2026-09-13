@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru" style="height:100%">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light" />
+    <title>АгроПрогноз — загрузка</title>
+    <!--
+      Экран загрузки. Electron показывает его в небольшом окне без рамки, пока
+      главное окно читает базу и строит интерфейс (electron/main.cjs). Снимок
+      этой же страницы (npm run splash → build/splash.bmp) показывает NSIS,
+      пока распаковывает portable-сборку. Логики здесь нет — только разметка.
+    -->
+    <link rel="stylesheet" href="./styles/splash.css" />
+  </head>
+  <body class="splash-page">
+    <div class="splash" role="status" aria-live="polite">
+      <div class="splash__brand">
+        <img class="splash__logo" src="./assets/brand/app-icon.svg" alt="" width="56" height="56" />
+        <div>
+          <div class="splash__name">АгроПрогноз</div>
+          <div class="splash__sub">Кукуруза</div>
+        </div>
+      </div>
+      <div class="splash__bar" aria-hidden="true"></div>
+      <div class="splash__status">Загрузка приложения…</div>
+    </div>
+  </body>
+</html>
