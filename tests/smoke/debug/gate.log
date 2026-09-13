@@ -1,0 +1,14 @@
+
+> agroprognoz-corn@0.2.0 test:gate
+> node tests/smoke/run-gate.mjs
+
+Проверка защиты production-сборки: http://localhost:4173
+  ✓ интерфейс приложения не построен
+  ✓ экран активации не предлагается (нет main process)
+  ✓ показан отказ запускаться вне Electron
+  ✓ моста window.agro в браузере нет
+  · скриншот tests\smoke\screenshots\gate-browser-refused.png
+  ✓ после перезагрузки приложение по-прежнему закрыто
+
+✔ Защита production-сборки проверена
+
