@@ -46,7 +46,10 @@ export function createShell({ navigate, onReady }) {
   ]);
 
   const main = h("main", { class: "main", id: "main", tabindex: "-1" });
-  const shell = h("div", { class: "shell" }, [sidebar, main]);
+  // Полоса захвата окна под скрытой системной строкой заголовка (Electron);
+  // в браузере её высота равна нулю.
+  const windowDrag = h("div", { class: "window-drag", "aria-hidden": "true" });
+  const shell = h("div", { class: "shell" }, [windowDrag, sidebar, main]);
 
   const media = window.matchMedia("(max-width: 1179px)");
   const applyNarrow = (isNarrow) => {

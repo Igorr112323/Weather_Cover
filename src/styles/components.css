@@ -723,6 +723,7 @@
   display: grid;
   place-items: center;
   padding: var(--sp-4);
+  padding-top: calc(var(--sp-4) + var(--titlebar-h));
   background: rgba(24, 39, 30, 0.4);
   animation: fade var(--dur) var(--ease);
 }
@@ -730,7 +731,7 @@
 .modal {
   width: 100%;
   max-width: 520px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 32px - var(--titlebar-h));
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1032,7 +1033,7 @@
   position: absolute;
   z-index: 900;
   left: 50%;
-  top: 20px;
+  top: calc(20px + var(--titlebar-h));
   transform: translateX(-50%);
   display: flex;
   align-items: center;

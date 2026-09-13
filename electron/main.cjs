@@ -347,6 +347,12 @@ function createWindow() {
     title: "АгроПрогноз — Кукуруза",
     backgroundColor: "#f4f7f4",
     autoHideMenuBar: true,
+    // Без системной строки заголовка: интерфейс занимает окно целиком, система
+    // рисует поверх него только кнопки «свернуть/развернуть/закрыть» (цвета —
+    // фон и основной текст приложения). Окно тянут за верхнюю полосу
+    // (.window-drag) и за блок с названием в боковой панели.
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#f4f7f4", symbolColor: "#18271e", height: 40 },
     icon: icon ? nativeImage.createFromPath(icon) : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
