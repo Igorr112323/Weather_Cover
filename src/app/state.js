@@ -66,9 +66,6 @@ export const state = createStore({
   storageLabel: "",
   appVersion: typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0",
 
-  /** Состояние лицензии из main process; null — ещё не получено. */
-  license: null,
-
   route: { name: "map", params: {}, query: {} },
   narrow: false,
 

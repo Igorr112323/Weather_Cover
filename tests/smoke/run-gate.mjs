@@ -8,7 +8,7 @@
  *
  * Смысл: production-сборка, открытая как обычная страница (именно так её увидел
  * бы человек, распаковавший app.asar и раздавший dist/ статикой), работать не
- * должна. Ни экрана активации, ни данных — только отказ. Это и есть проверка,
+ * должна. Ни интерфейса, ни данных — только отказ. Это и есть проверка,
  * что ветка «режим разработки» из production-бандла удалена вместе с условием.
  *
  * Переменные окружения:
@@ -57,13 +57,11 @@ try {
     hasBridge: typeof window.agro !== "undefined",
     sidebar: Boolean(document.querySelector(".sidebar")),
     navItems: document.querySelectorAll(".nav-item").length,
-    activation: Boolean(document.querySelector(".activate")),
     bootError: Boolean(document.querySelector(".boot")),
     title: document.querySelector(".page-title")?.textContent ?? "",
   }));
 
   check("интерфейс приложения не построен", state.sidebar === false && state.navItems === 0, JSON.stringify(state));
-  check("экран активации не предлагается (нет main process)", state.activation === false);
   check("показан отказ запускаться вне Electron", /AgroPrognoz\.exe/.test(text) && /браузер/i.test(text), state.title);
   check("моста window.agro в браузере нет", state.hasBridge === false);
 

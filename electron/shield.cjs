@@ -57,7 +57,7 @@ const SUSPECT_ENV = Object.freeze([
  * разрешает запуск из исходников, AGRO_DEV_SERVER подменяет адрес загрузки окна.
  * Случайно такие имена не появляются, поэтому по ним запуск прерывается.
  */
-const DEV_ENV = Object.freeze(["AGRO_DEV", "AGRO_DEV_SERVER", "AGRO_LICENSE_DISABLED"]);
+const DEV_ENV = Object.freeze(["AGRO_DEV", "AGRO_DEV_SERVER"]);
 
 /** Файл, который есть только в исходниках и отсутствует внутри app.asar. */
 const SOURCE_MARKER = "vite.config.js";

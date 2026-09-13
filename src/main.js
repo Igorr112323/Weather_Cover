@@ -17,14 +17,12 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/layout.css";
 import "./styles/components.css";
-import "./styles/activate.css";
 
 import { h } from "./lib/dom.js";
 import { state, MAP_DEFAULTS, resetForecast } from "./app/state.js";
 import { createShell } from "./app/shell.js";
 import { createRouter } from "./app/router.js";
 import { createPersistence } from "./services/persistence.js";
-import { LICENSE_MODE, resolveLicense } from "./services/license.js";
 import { loadSql } from "./services/sql-driver.js";
 import { DatabaseService, openDatabase } from "./services/database.js";
 import { getSetting, listVarieties } from "./services/repositories.js";
@@ -35,7 +33,6 @@ import { createResultsPage } from "./pages/results/index.js";
 import { createDatasetsPage } from "./pages/datasets/index.js";
 import { createReportsPage } from "./pages/reports/index.js";
 import { createVarietiesPage } from "./pages/varieties/index.js";
-import { createActivationPage } from "./pages/activate/index.js";
 
 const root = document.getElementById("app");
 
@@ -93,75 +90,30 @@ function reload() {
 }
 
 /**
- * Проверка лицензии и, если нужно, экран активации.
+ * Приложение работает только из AgroPrognoz.exe: данные и файловые операции
+ * живут в основном процессе Electron, а мост window.agro даёт preload.
+ * Production-сборка, открытая обычной страницей (например, распакованный
+ * app.asar, розданный статикой), работать не должна — показываем отказ.
+ * В dev-сборке (dev-сервер Vite) интерфейс доступен и в браузере: носителем
+ * данных там становится IndexedDB.
  *
- * Возвращает {ok:false}, когда показан экран отказа и продолжать нельзя,
- * либо {ok:true, status} — состояние принятой лицензии.
- *
- * Решение принимает main process (electron/license/guard.cjs); здесь только
- * показ состояний. Лицензия бессрочная: дат и сроков на экранах нет.
+ * @returns {boolean} false — показан экран отказа, продолжать нельзя
  */
-async function ensureLicense() {
-  // Экран активации в браузере — только dev-сборка: в production ветка
-  // import.meta.env.DEV вырезается вместе с динамическим импортом, поэтому
-  // ни кода, ни строк демо-режима в бандле не остаётся.
-  if (import.meta.env.DEV) {
-    const { activationDemoMode, showActivationDemo } = await import("./dev/activation-demo.js");
-    const demoMode = activationDemoMode(window.location.search);
-    if (demoMode) {
-      await showActivationDemo({ mode: demoMode, root, version: state.state.appVersion, revealWindow });
-      return { ok: false };
-    }
-  }
+function ensureDesktop() {
+  // В production-сборке Vite заменяет import.meta.env.DEV на false, и ветка
+  // разработки исчезает из бандла вместе со своим условием.
+  if (import.meta.env.DEV) return true;
+  if (window.agro?.readDatabase) return true;
 
-  const resolved = await resolveLicense();
-
-  if (resolved.mode === LICENSE_MODE.BROWSER) {
-    renderFatal({
-      title: "Приложение запускается только из AgroPrognoz.exe",
-      text: [
-        "Это desktop-приложение: данные и проверка лицензии живут в основном процессе Electron.",
-        "Откройте AgroPrognoz.exe — страница, открытая в браузере, работать не будет.",
-      ].join("\n"),
-      actions: [],
-    });
-    return { ok: false };
-  }
-
-  if (resolved.status?.tampered) {
-    renderFatal({
-      title: "Файлы приложения изменены",
-      text: [
-        "Проверка целостности не прошла: файлы сборки не совпадают с оригинальными.",
-        resolved.status.tamperDetail ? `Изменено: ${resolved.status.tamperDetail}` : "",
-        "Запустите оригинальный AgroPrognoz.exe или переустановите приложение. Данные не повреждаются: приложение их не трогало.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      actions: [],
-    });
-    return { ok: false };
-  }
-
-  if (resolved.activated) {
-    state.set({ license: resolved.status });
-    return { ok: true, status: resolved.status };
-  }
-
-  const activated = await new Promise((resolve) => {
-    const page = createActivationPage({
-      status: resolved.status,
-      version: state.state.appVersion,
-      onActivated: (nextStatus) => resolve(nextStatus),
-    });
-    root.replaceChildren(page.node);
-    // Окно показываем сразу: человек должен увидеть экран активации,
-    // а не ждать 20 секунд страховки главного окна.
-    revealWindow();
+  renderFatal({
+    title: "Приложение запускается только из AgroPrognoz.exe",
+    text: [
+      "Это desktop-приложение: данные и работа с файлами живут в основном процессе Electron.",
+      "Откройте AgroPrognoz.exe — страница, открытая в браузере, работать не будет.",
+    ].join("\n"),
+    actions: [],
   });
-
-  state.set({ license: activated ?? resolved.status ?? null });
-  return { ok: true, status: activated ?? resolved.status };
+  return false;
 }
 
 function refreshVarieties(db) {
@@ -178,10 +130,7 @@ function refreshVarieties(db) {
 }
 
 async function main() {
-  // Лицензия проверяется до загрузки данных: пока main process не принял код,
-  // приложение не читает базу и не показывает интерфейс.
-  const license = await ensureLicense();
-  if (!license.ok) return;
+  if (!ensureDesktop()) return;
 
   renderBoot("Загрузка приложения");
 
