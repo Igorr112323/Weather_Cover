@@ -39,6 +39,7 @@ export function showActivationDemo({ mode, root, version, revealWindow }) {
       status: {
         activated: false,
         machineIdShort: "DEMO-DEMO",
+        machineId: "de".repeat(32),
         machineQuality: "high",
         // demo-tampered: сообщение о порче файлов и заблокированные кнопки
         tampered: mode === "demo-tampered",

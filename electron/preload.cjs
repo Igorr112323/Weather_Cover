@@ -101,6 +101,26 @@ contextBridge.exposeInMainWorld("agro", {
     async activateFromFile() {
       return takeToken(await invoke("agro:license-activate-file"));
     },
+
+    /**
+     * Заявка на персональный код: текст и публичный контакт владельца
+     * собирает main process. Секретов здесь нет (и в renderer их не бывает):
+     * отправка идёт через собственные мессенджер/почту покупателя.
+     */
+    async requestInfo() {
+      return invoke("agro:license-request-info");
+    },
+
+    /** Открыть канал связи (telegram|whatsapp|email) с готовым текстом заявки. */
+    async openRequestChannel(channel) {
+      const name = typeof channel === "string" ? channel.slice(0, 32) : "";
+      return invoke("agro:license-request-open", { channel: name });
+    },
+
+    /** Сохранить заявку файлом .agrorequest (путь выбирается в системном диалоге). */
+    async saveRequestFile() {
+      return invoke("agro:license-request-save");
+    },
   },
 
   /** Интерфейс построен: главное окно можно показать вместо экрана загрузки. */

@@ -139,6 +139,44 @@
   border-top: 1px dashed var(--border);
 }
 
+/* Заявка владельцу: панель с текстом заявки, каналами связи и запасными путями. */
+.activate__request {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.activate__request-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+
+.activate__request-text {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+  resize: vertical;
+  min-height: 120px;
+}
+
+.activate__request-hint {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.activate__request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
 .activate__done {
   display: flex;
   flex-direction: column;

@@ -9,12 +9,18 @@
  * Лицензия бессрочная: на экране нет ни срока действия, ни обратного отсчёта,
  * ни дат — только серийный номер лицензии и идентификатор компьютера
  * (нужен для персональных кодов и для обращений в поддержку).
+ *
+ * Заявка владельцу: кнопка формирует текст заявки (код компьютера, полный
+ * идентификатор, версия) и открывает мессенджер/почту покупателя с готовым
+ * текстом. Контакт владельца в renderer не хранится — его присылает main
+ * process. Запасные пути: скопировать заявку и сохранить файл .agrorequest.
  */
 
 import { h, icon } from "../../lib/dom.js";
 import { createButton } from "../../components/button.js";
 import { toast } from "../../components/toast.js";
 import { activateLicense, activateLicenseFromFile } from "../../services/license.js";
+import { openRequestChannel, resolveRequestInfo, saveRequestFile } from "../../services/license-request.js";
 import { CODE_BODY_LENGTH, codeProgress, formatCodeText, isCodeComplete } from "../../services/license-code.js";
 import iconUrl from "../../assets/brand/app-icon.svg?url";
 
@@ -261,6 +267,142 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     }),
   ]);
 
+  /* ── Заявка владельцу ─────────────────────────────────────────────────── */
+
+  /**
+   * Панель заявки: текст (код компьютера, полный идентификатор, версия),
+   * каналы связи и запасные пути — копирование и файл .agrorequest. Контакты
+   * владельца интерфейс не хранит: они приходят из main process вместе с
+   * готовым текстом. Приложение при этом остаётся офлайн — заявка уходит
+   * только через собственные мессенджер или почту покупателя.
+   */
+  const requestText = h("textarea", {
+    class: "activate__request-text",
+    rows: "7",
+    readonly: "",
+    spellcheck: "false",
+    "data-request-text": "",
+    "aria-label": "Текст заявки владельцу",
+  });
+
+  const contactHint = h("p", { class: "muted activate__request-hint", "data-request-contact": "" });
+
+  function channelButton(channel, label) {
+    const button = createButton({
+      label,
+      tone: "secondary",
+      onClick: async (_event, self) => {
+        self.setLoading(true);
+        const result = await openRequestChannel(channel);
+        self.setLoading(false);
+        if (result?.ok) {
+          toast.success(result.copied ? "Текст заявки скопирован — вставьте его в открывшемся чате" : "Заявка отправляется");
+          return;
+        }
+        toast.warning(result?.message || "Не удалось открыть канал связи");
+      },
+    });
+    button.setAttribute("data-request-channel", channel);
+    return button;
+  }
+
+  const requestState = { fileName: "", loaded: false };
+
+  const requestPanel = h("div", { class: "activate__request-panel", "data-request-panel": "", hidden: "" }, [
+    h("div", { class: "field" }, [
+      h("div", { class: "control control--multiline" }, [requestText]),
+    ]),
+    contactHint,
+    h("div", { class: "activate__request-actions" }, [
+      channelButton("telegram", "Telegram"),
+      channelButton("whatsapp", "WhatsApp"),
+      channelButton("email", "Почта"),
+      (() => {
+        const button = createButton({
+          label: "Скопировать заявку",
+          tone: "secondary",
+          icon: "clipboard-list",
+          onClick: async () => {
+            const ok = await copyText(requestText.value);
+            if (ok) toast.success("Заявка скопирована");
+            else toast.error("Скопировать не удалось — выделите текст заявки и скопируйте вручную");
+          },
+        });
+        button.setAttribute("data-request-copy", "");
+        return button;
+      })(),
+      (() => {
+        const button = createButton({
+          label: "Сохранить файл .agrorequest",
+          tone: "ghost",
+          icon: "save",
+          title: "Файл заявки можно переслать владельцу любым удобным способом",
+          onClick: async (_event, self) => {
+            self.setLoading(true);
+            const result = await saveRequestFile(requestText.value, requestState.fileName);
+            self.setLoading(false);
+            if (result?.ok) toast.success(`Файл заявки сохранён${result.fileName ? `: ${result.fileName}` : ""}`);
+            else toast.warning(result?.message || "Не удалось сохранить файл заявки");
+          },
+        });
+        button.setAttribute("data-request-save", "");
+        return button;
+      })(),
+    ]),
+  ]);
+
+  async function loadRequestInfo() {
+    const info = await resolveRequestInfo(status, version);
+    requestText.value = info.text ?? "";
+    requestState.fileName = info.fileName ?? "";
+    if (info.contact?.phone) {
+      const pretty = info.contact.phone.replace(/^(\d)(\d{3})(\d{3})(\d{2})(\d{2})$/, "+$1 $2 $3-$4-$5");
+      contactHint.textContent = `Владелец: ${info.contact.telegramUser ? `@${info.contact.telegramUser}` : pretty}${
+        info.contact.email ? ` · ${info.contact.email}` : ""
+      }`;
+    } else if (info.local) {
+      contactHint.textContent = "В браузере заявку можно скопировать или сохранить файлом; мессенджер откроется в приложении.";
+    } else {
+      contactHint.textContent = "";
+    }
+    // Каналы, которые владелец не настроил, не показываются вовсе.
+    if (!info.local && info.channels && typeof info.channels === "object") {
+      for (const button of [...requestPanel.querySelectorAll("[data-request-channel]")]) {
+        const channel = button.getAttribute("data-request-channel");
+        if (info.channels[channel] !== true) button.hidden = true;
+      }
+    }
+    requestState.loaded = true;
+  }
+
+  const requestToggle = createButton({
+    label: "Отправить заявку владельцу",
+    tone: "secondary",
+    icon: "inbox",
+    disabled: status?.tampered === true,
+    onClick: async (_event, self) => {
+      const opening = requestPanel.hidden;
+      requestPanel.hidden = !opening;
+      if (opening && !requestState.loaded) {
+        self.setLoading(true, "Готовим заявку");
+        await loadRequestInfo();
+        self.setLoading(false);
+      }
+    },
+  });
+  requestToggle.setAttribute("data-request-toggle", "");
+
+  const requestSection = h("div", { class: "activate__request" }, [
+    h("span", { class: "block-title", text: "Заявка владельцу" }),
+    h("p", {
+      class: "muted activate__lead",
+      text: "Нужен персональный код? Нажмите кнопку — откроется мессенджер или почта с готовой заявкой: владельцу понадобится только код этого компьютера. Если вы переустановили Windows и прежний код больше не подходит — владелец выпустит новый по этой же заявке.",
+    }),
+    requestToggle,
+    requestPanel,
+  ]);
+
+
   const details = h("dl", { class: "kv activate__details" }, [
     h("dt", { text: "Условия лицензии" }),
     h("dd", { class: "num", text: "Бессрочная, без ограничения по дате" }),
@@ -297,6 +439,8 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     h("div", { class: "activate__actions" }, [activateButton, pasteButton, fileButton]),
     h("div", { class: "activate__divider", "aria-hidden": "true" }),
     machineRow,
+    h("div", { class: "activate__divider", "aria-hidden": "true" }),
+    requestSection,
     details,
   ]);
 

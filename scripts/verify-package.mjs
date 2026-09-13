@@ -19,7 +19,7 @@
  */
 
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, stat as statFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import crypto from "node:crypto";
 import os from "node:os";
@@ -103,7 +103,31 @@ try {
   check("исходников интерфейса (src/) в упаковке нет", !files.some((item) => item.startsWith("src/")));
   check("скриптов сборки в упаковке нет", !files.some((item) => item.startsWith("scripts/")));
   check("тестов в упаковке нет", !files.some((item) => item.startsWith("tests/")));
-  check("ключей и журнала лицензий в упаковке нет", !files.some((item) => item.startsWith("secrets/") || item.endsWith(".agrolic")));
+  check("студии лицензий в упаковке нет", !files.some((item) => item.startsWith("scripts/license-studio") || item.startsWith("scripts/license")));
+
+  console.log("\nАнти-слив (ключи, журнал, контакты владельца):");
+  check(
+    "файлов закрытого ключа и журнала выдачи в упаковке нет",
+    !files.some((item) => item.startsWith("secrets/") || item.endsWith(".agrolic") || item.endsWith(".agrorequest") || /license-key|ledger/i.test(item)),
+  );
+  // Закрытый ключ Ed25519 в DER (PKCS#8) в base64 всегда начинается этими
+  // байтами — так что даже переименованный файл был бы замечен.
+  const privateLeak = [];
+  const messengerLeak = [];
+  for (const relative of files) {
+    const target = path.join(appDir, relative);
+    const stat = await statFile(target);
+    if (!stat || !stat.isFile() || stat.size > 8 * 1024 * 1024) continue;
+    const content = await readFile(target, "utf8").catch(() => "");
+    if (!content) continue;
+    if (content.includes("MC4CAQAwBQYDK2Vw")) privateLeak.push(relative);
+    // Renderer не строит ссылки на мессенджеры и почту владельца: канал заявки
+    // открывает main process из своих настроек. Эти шаблоны в dist/ означали
+    // бы, что контакт владельца попал в интерфейс.
+    if (relative.startsWith("dist/") && /(wa\.me\/|t\.me\/(share|@)|tg:\/\/|mailto:)/i.test(content)) messengerLeak.push(relative);
+  }
+  check("в файлах упаковки нет закрытого ключа Ed25519", privateLeak.length === 0, privateLeak.slice(0, 4).join(", "));
+  check("renderer не строит ссылки на мессенджеры владельца", messengerLeak.length === 0, messengerLeak.slice(0, 4).join(", "));
   // electron-builder всегда кладёт в asar production-зависимости из package.json,
   // поэтому список зависимостей намеренно пуст: всё нужное собирает Vite в dist/
   // (шрифты, chart.js, leaflet, sql-wasm). Появится node_modules — значит кто-то

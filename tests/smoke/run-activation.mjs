@@ -174,6 +174,61 @@ try {
   await page.waitForTimeout(600);
   check("кнопка файла не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 
+  /* ── Заявка владельцу ─────────────────────────────────────────────────── */
+
+  // Кнопка формирует текст заявки (код компьютера, полный идентификатор,
+  // версия) и открывает каналы связи. Контакты владельца в renderer не
+  // хранятся — в браузере честно говорится, что мессенджер откроется в
+  // приложении, а копирование и файл заявки работают уже здесь.
+  const requestToggle = page.getByRole("button", { name: "Отправить заявку владельцу", exact: true });
+  check("кнопка «Отправить заявку владельцу» на экране", (await requestToggle.count()) === 1);
+  await requestToggle.click();
+  await page.waitForSelector("[data-request-panel]:not([hidden])", { timeout: 10000 });
+
+  const request = await page.evaluate(() => {
+    const text = document.querySelector("[data-request-text]")?.value ?? "";
+    const channels = [...document.querySelectorAll("[data-request-channel]")].filter((node) => node.hidden === false).map((node) => node.textContent.trim());
+    return {
+      text,
+      channels,
+      hasCopy: Boolean(document.querySelector("[data-request-copy]")),
+      hasSave: Boolean(document.querySelector("[data-request-save]")),
+      contact: document.querySelector("[data-request-contact]")?.textContent ?? "",
+    };
+  });
+  check("панель заявки открылась с текстом заявки", request.text.length > 40, request.text.slice(0, 60));
+  check("в заявке есть код компьютера", request.text.includes("DEMO-DEMO"), request.text.split("\n")[2] ?? "");
+  check("в заявке есть полный идентификатор компьютера", request.text.includes("de".repeat(32)));
+  check("в заявке есть версия приложения", /Приложение: .*0\.\d+\.\d+/.test(request.text), request.text.split("\n")[1] ?? "");
+  check("в заявке сказано про бессрочную лицензию", /бессрочн/i.test(request.text));
+  check(
+    "в заявке нет ни одной даты и срока",
+    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(request.text) && !/действует до|истека|осталось/i.test(request.text),
+  );
+  check("каналы заявки показаны", ["Telegram", "WhatsApp", "Почта"].every((label) => request.channels.includes(label)), request.channels.join(","));
+  check("есть копирование заявки и файл .agrorequest", request.hasCopy && request.hasSave);
+
+  await page.screenshot({ path: path.join(SHOTS_DIR, "activation-request.png") });
+
+  // Копирование в headless-браузере может быть запрещено: экран обязан
+  // пережить это без падения (сообщение — тост, не ошибка консоли).
+  await page.click("[data-request-copy]");
+  await page.waitForTimeout(400);
+  check("копирование заявки не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
+
+  // Канал связи в браузере открыть нельзя (нет main process) — честный отказ.
+  await page.click('[data-request-channel="telegram"]');
+  await page.waitForTimeout(400);
+  check("кнопка мессенджера не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
+  const browserNotice = await page.evaluate(() => [...document.querySelectorAll(".toast__msg")].map((node) => node.textContent).join(" "));
+  check("в браузере сказано, что канал откроется в приложении", /приложении|AgroPrognoz\.exe/i.test(browserNotice), browserNotice.slice(0, 80));
+
+  // Файл заявки: в браузере это обычная загрузка .agrorequest.
+  const downloadPromise = page.waitForEvent("download", { timeout: 8000 }).catch(() => null);
+  await page.click("[data-request-save]");
+  const download = await downloadPromise;
+  check("файл .agrorequest доступен для сохранения", download !== null && download.suggestedFilename().endsWith(".agrorequest"), download?.suggestedFilename() ?? "загрузки не было");
+
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-filled.png") });
 
   // Второй проход: экран с сообщением о порче файлов (?license=demo-tampered).
@@ -186,6 +241,8 @@ try {
     [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
   );
   check("кнопки активации заблокированы при порче", disabled.length === 3 && disabled.every(Boolean), String(disabled));
+  const requestDisabled = await page.evaluate(() => document.querySelector("[data-request-toggle]")?.disabled === true);
+  check("кнопка заявки тоже заблокирована при порче", requestDisabled === true);
   check("при порче интерфейс приложения не построен", (await page.evaluate(() => Boolean(document.querySelector(".sidebar")))) === false);
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-tampered.png") });
 
