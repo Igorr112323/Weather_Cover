@@ -1,12 +1,18 @@
 # Сборка и проверка «АгроПрогноз — Кукуруза» на Windows.
 #
 # Джобы:
-#   verify   — unit-тесты + сборка renderer (быстрый гейт).
-#   smoke    — браузерный smoke-тест сценария (информационный, релиз не блокирует).
-#   portable — portable EXE (electron-builder), артефакт AgroPrognoz-<version>-portable.exe.
+#   verify   — unit-тесты + сборка renderer + защищённая сборка main process
+#              (обфускация, манифест целостности и самопроверка) — быстрый гейт.
+#   smoke    — браузерные проверки: защита production-сборки (страница вне
+#              Electron работать не должна) и сценарий приложения на dev-сервере.
+#   portable — portable EXE (electron-builder) и проверка того, что оказалось
+#              внутри: состав app.asar, цепочка целостности, страж лицензии,
+#              Electron Fuses. Артефакт AgroPrognoz-<version>-portable.exe.
 # При пуше тега v* EXE дополнительно публикуется в GitHub Release.
 #
 # Платные сервисы не используются: только GitHub-hosted runner и npm.
+# Закрытый ключ лицензий в CI не нужен и не передаётся: сборка проверяется
+# выдуманными кодами, а настоящие выписывает владелец приложения локально.
 
 name: windows-build
 
@@ -46,14 +52,17 @@ jobs:
           npm run icon
           npm run prepare:assets
 
-      - name: Unit-тесты
+      - name: Unit-тесты (включая лицензию и защиту)
         run: npm test
 
       - name: Сборка renderer
         run: npm run build
 
+      - name: Защищённая сборка main process
+        run: npm run harden
+
   smoke:
-    name: Smoke-тест в браузере
+    name: Браузерные проверки
     runs-on: windows-latest
     needs: verify
     defaults:
@@ -78,10 +87,10 @@ jobs:
       - name: Сборка renderer
         run: npm run build
 
-      - name: Браузер для smoke-теста
+      - name: Браузер для проверок
         run: npx playwright install chromium
 
-      - name: Предпросмотр сборки (фон)
+      - name: Предпросмотр production-сборки (фон)
         run: |
           npm run preview > preview.log 2>&1 &
           echo $! > preview.pid
@@ -93,8 +102,37 @@ jobs:
           done
           curl -sf http://localhost:4173/ > /dev/null
 
+      - name: Защита production-сборки (страница вне Electron)
+        timeout-minutes: 10
+        run: |
+          mkdir -p tests/smoke/debug
+          npm run test:gate 2>&1 | tee tests/smoke/debug/gate.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Dev-сервер для сценария (фон)
+        run: |
+          npm run dev > dev-server.log 2>&1 &
+          echo $! > dev.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173/ > /dev/null; then
+              echo "dev server is up"; break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:5173/ > /dev/null
+
+      - name: Экран активации (dev-сервер, ?license=demo)
+        timeout-minutes: 10
+        env:
+          AGRO_ACTIVATION_URL: http://localhost:5173
+        run: |
+          npm run test:activation 2>&1 | tee tests/smoke/debug/activation.log
+          exit "${PIPESTATUS[0]}"
+
       - name: Smoke-тест сценария
         timeout-minutes: 15
+        env:
+          AGRO_SMOKE_URL: http://localhost:5173
         run: |
           mkdir -p tests/smoke/debug
           npm run test:smoke 2>&1 | tee tests/smoke/debug/smoke.log
@@ -111,11 +149,13 @@ jobs:
           git commit -m "debug ${GITHUB_RUN_ID}" || true
           git push -f origin debug/smoke
 
-      - name: Остановить предпросмотр
+      - name: Остановить серверы
         if: always()
-        run: kill "$(cat preview.pid)" 2>/dev/null || true
+        run: |
+          kill "$(cat preview.pid)" 2>/dev/null || true
+          kill "$(cat dev.pid)" 2>/dev/null || true
 
-      - name: Скриншоты smoke-теста
+      - name: Скриншоты проверок
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -159,6 +199,13 @@ jobs:
       - name: Проверить артефакт
         run: ls -la release/
 
+      # EXE в CI запустить нельзя, но можно разобрать его содержимое:
+      # состав app.asar, целостность упакованных файлов, работа стража лицензии
+      # и состояние Electron Fuses в AgroPrognoz.exe.
+      - name: Проверка упаковки и фьюзов
+        timeout-minutes: 10
+        run: npm run verify:package
+
       - name: Артефакт AgroPrognoz-portable.exe
         uses: actions/upload-artifact@v4
         with:
@@ -169,6 +216,6 @@ jobs:
 
       - name: Release при теге v*
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release create "${GITHUB_REF_NAME}" release/AgroPrognoz-*-portable.exe --title "${GITHUB_REF_NAME}" --notes "Portable-сборка для Windows (без установки)."
+        run: gh release create "${GITHUB_REF_NAME}" release/AgroPrognoz-*-portable.exe --title "${GITHUB_REF_NAME}" --notes "Portable-сборка для Windows (без установки). Требуется код активации; лицензия бессрочная."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

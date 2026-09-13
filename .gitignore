@@ -7,3 +7,10 @@ src/assets/geo/cache/
 coverage/
 tests/smoke/screenshots/
 preview.pid
+
+# Защищённая сборка main process (создаёт scripts/harden.mjs)
+hardened/
+
+# Закрытый ключ лицензий и журнал выданных кодов — НИКОГДА не коммитить
+secrets/
+*.agrolic

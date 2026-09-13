@@ -11,27 +11,63 @@
  *   - renderer получает узкий API из preload.cjs: чтение/запись базы,
  *     сохранение копии, запись файла выгрузки и сигнал «интерфейс готов».
  *
+ * Лицензия и защита от взлома (подробности — docs/ЗАЩИТА.md):
+ *   - приложение требует код активации; лицензия БЕССРОЧНАЯ, дат в проверке нет;
+ *   - подпись Ed25519 проверяется только здесь, в main process (license/guard.cjs):
+ *     renderer не знает ни ключа, ни алгоритма принятия решения;
+ *   - после активации выдаётся токен сессии, который живёт в замыкании preload
+ *     и до renderer'а не доходит; все каналы данных требуют этот токен, поэтому
+ *     «взломанный» интерфейс остаётся без данных;
+ *   - при запуске сверяются SHA-256 файлов сборки (license/integrity.cjs) и
+ *     условия запуска — отладчик, --inspect, переменные разработки
+ *     (license/shield.cjs);
+ *   - в бинарнике выключены Electron-fuses: RunAsNode, NODE_OPTIONS,
+ *     --inspect, загрузка кода мимо app.asar (см. build.electronFuses).
+ *
  * Запуск: сначала открывается экран загрузки (splash.html), главное окно
  * создаётся скрытым и показывается, когда renderer построил интерфейс.
  * В portable-сборке до этого момента на экране заставка NSIS (build/splash.bmp):
  * она убирается только после появления первого окна приложения — см.
  * markSplashHandoff() и scripts/patch-portable-nsi.mjs.
  *
- * ASAR — это упаковка, а не криптографическая защита исходников.
+ * ASAR — это упаковка, а не криптографическая защита исходников: в сборку
+ * уходит обфусцированная копия electron/ (scripts/harden.mjs), а содержимое
+ * проверяется по хэшу.
  */
 
 "use strict";
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, protocol, screen, session, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  dialog,
+  ipcMain,
+  nativeImage,
+  protocol,
+  safeStorage,
+  screen,
+  session,
+  shell,
+} = require("electron");
 const fs = require("node:fs");
+const inspector = require("node:inspector");
 const path = require("node:path");
 
 const { createFileStore } = require("./persistence.cjs");
 const { CSP_PRODUCTION, EXTERNAL_LINK_HOSTS } = require("./csp.cjs");
+const { createGuard } = require("./license/guard.cjs");
+const { decideLaunch, hardenWebContentsAgainstDebugging } = require("./license/shield.cjs");
 
 const PROTOCOL_NAME = "app";
 const PROTOCOL_HOST = "agroprognoz.local";
 const DB_FILE_NAME = "agroprognoz.sqlite";
+/** Файл активированной лицензии в каталоге профиля (шифруется, см. license/store.cjs). */
+const LICENSE_FILE_NAME = "agroprognoz.license";
+/** Файл лицензии читаем через системный диалог: большой файл — не лицензия. */
+const LICENSE_FILE_MAX_BYTES = 64 * 1024;
+/** Предел текста кода, пришедшего из поля ввода. */
+const LICENSE_CODE_MAX_CHARS = 4000;
 const FLUSH_TIMEOUT_MS = 1500;
 
 /** Экран загрузки: размер окна совпадает с build/splash.bmp portable-сборки. */
@@ -97,6 +133,9 @@ let mainRevealed = false;
 let splashHandoffDone = false;
 let fileStore = null;
 let closePhase = false;
+/** Страж лицензии: создаётся один раз при запуске, до открытия главного окна. */
+let licenseGuard = null;
+let detachDebugShield = null;
 
 const log = (...args) => console.log("[agroprognoz]", ...args);
 
@@ -194,6 +233,20 @@ function hardenWebContents(contents) {
 
   contents.on("will-attach-webview", (event) => {
     event.preventDefault();
+  });
+
+  // В упакованном приложении инструменты разработчика выключены на уровне
+  // webPreferences (devTools: false); здесь закрывается программное открытие
+  // и повторные попытки — вторая попытка завершает процесс.
+  detachDebugShield?.();
+  detachDebugShield = hardenWebContentsAgainstDebugging(contents, {
+    packaged: app.isPackaged,
+    log,
+    onViolation: () => {
+      log("shield: повторная попытка открыть инструменты разработчика — выход");
+      markSplashHandoff();
+      app.exit(1);
+    },
   });
 }
 
@@ -419,7 +472,87 @@ function createWindow() {
 
 /* ── IPC: только операции хранения и экспорта ────────────────────────────── */
 
+/**
+ * Каналы лицензии и данных доступны только главному окну: ни одно другое
+ * содержимое (в том числе открытое через window.open) до них не дотянется.
+ */
+function isTrustedSender(event) {
+  const win = mainWindow;
+  return Boolean(win) && !win.isDestroyed() && event.sender === win.webContents;
+}
+
+const FORBIDDEN = Object.freeze({ ok: false, code: "FORBIDDEN", message: "Операция недоступна этому окну" });
+const NOT_READY = Object.freeze({ ok: false, code: "NOT_READY", message: "Приложение ещё не готово" });
+
+/**
+ * Пропуск к данным: окно главное + лицензия активна + токен выдан этим
+ * процессом. Возвращает null, если доступ разрешён, иначе готовый ответ.
+ */
+function gateDataAccess(event, token) {
+  if (!isTrustedSender(event)) return FORBIDDEN;
+  if (!licenseGuard) return NOT_READY;
+  return licenseGuard.gate(token);
+}
+
 function registerIpc() {
+  /* ── Лицензия ─────────────────────────────────────────────────────────── */
+
+  /**
+   * Состояние лицензии. Токен сессии приходит в этом же ответе, но забирает
+   * его preload (см. preload.cjs): renderer токен не видит и подделать не может.
+   */
+  ipcMain.handle("agro:license-status", (event) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    if (!licenseGuard) return NOT_READY;
+    return licenseGuard.statusWithToken();
+  });
+
+  /** Активация кодом. Проверка подписи — в main process, дат в проверке нет. */
+  ipcMain.handle("agro:license-activate", async (event, code) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    if (!licenseGuard) return NOT_READY;
+    if (typeof code !== "string" || code.length === 0 || code.length > LICENSE_CODE_MAX_CHARS) {
+      return { ok: false, code: "INVALID_INPUT", message: "Некорректный код активации", status: licenseGuard.status() };
+    }
+    return licenseGuard.activate(code);
+  });
+
+  /**
+   * Активация файлом: путь выбирает человек в системном диалоге, renderer
+   * путь не передаёт и содержимое файла не видит.
+   */
+  ipcMain.handle("agro:license-activate-file", async (event) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    if (!licenseGuard) return NOT_READY;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const dialogResult = await dialog.showOpenDialog(win ?? mainWindow, {
+      title: "Файл лицензии",
+      buttonLabel: "Активировать",
+      properties: ["openFile"],
+      filters: [
+        { name: "Файл лицензии", extensions: ["agrolic", "lic", "txt", "key"] },
+        { name: "Все файлы", extensions: ["*"] },
+      ],
+    });
+    if (dialogResult.canceled || !dialogResult.filePaths?.length) {
+      return { ok: false, code: "canceled", message: "Выбор файла отменён" };
+    }
+    const filePath = dialogResult.filePaths[0];
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile() || stat.size === 0 || stat.size > LICENSE_FILE_MAX_BYTES) {
+        return { ok: false, code: "INVALID_FILE", message: "Файл не похож на файл лицензии", status: licenseGuard.status() };
+      }
+      const text = await fs.promises.readFile(filePath, "utf8");
+      return licenseGuard.activate(text);
+    } catch (error) {
+      log("license-file:", error?.code ?? error?.message);
+      return { ok: false, code: "READ_FAILED", message: "Не удалось прочитать файл лицензии", status: licenseGuard.status() };
+    }
+  });
+
+  /* ── Служебные каналы ─────────────────────────────────────────────────── */
+
   ipcMain.on("agro:app-ready", (event) => {
     if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) revealMainWindow();
   });
@@ -439,16 +572,23 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle("agro:get-app-info", () => ({
-    ok: true,
-    version: app.getVersion(),
-    name: "АгроПрогноз — Кукуруза",
-    platform: process.platform,
-    electron: process.versions.electron,
-    databaseFileName: DB_FILE_NAME,
-  }));
+  ipcMain.handle("agro:get-app-info", (event) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    return {
+      ok: true,
+      version: app.getVersion(),
+      name: "АгроПрогноз — Кукуруза",
+      platform: process.platform,
+      electron: process.versions.electron,
+      databaseFileName: DB_FILE_NAME,
+      licenseFileName: LICENSE_FILE_NAME,
+      packaged: app.isPackaged,
+    };
+  });
 
-  ipcMain.handle("agro:read-database", async () => {
+  ipcMain.handle("agro:read-database", async (event, payload) => {
+    const denied = gateDataAccess(event, payload?.token);
+    if (denied) return denied;
     try {
       const bytes = await store().read();
       return { ok: true, bytes };
@@ -458,9 +598,11 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle("agro:write-database", async (event, bytes) => {
+  ipcMain.handle("agro:write-database", async (event, payload) => {
+    const denied = gateDataAccess(event, payload?.token);
+    if (denied) return denied;
     try {
-      const result = await store().write(bytes);
+      const result = await store().write(payload?.bytes);
       return { ok: true, bytes: result.bytes };
     } catch (error) {
       log("write-database:", error?.code ?? error?.message);
@@ -468,9 +610,11 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle("agro:preserve-database", async (_event, reason) => {
+  ipcMain.handle("agro:preserve-database", async (event, payload) => {
+    const denied = gateDataAccess(event, payload?.token);
+    if (denied) return denied;
     try {
-      const fileName = await store().preserve(typeof reason === "string" ? reason : "error");
+      const fileName = await store().preserve(typeof payload?.reason === "string" ? payload.reason : "error");
       return { ok: true, fileName };
     } catch (error) {
       log("preserve-database:", error?.code ?? error?.message);
@@ -483,6 +627,8 @@ function registerIpc() {
    * файла и содержимое. Запись «куда попало» невозможна.
    */
   ipcMain.handle("agro:save-file", async (event, payload) => {
+    const denied = gateDataAccess(event, payload?.token);
+    if (denied) return denied;
     const bytes = payload?.bytes;
     const requestedName = String(payload?.fileName ?? "export.csv");
     if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) {
@@ -509,6 +655,53 @@ function registerIpc() {
 
 /* ── Запуск ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Условия запуска проверяются до создания окон: подключённый инспектор,
+ * отладочные переключатели (--inspect, --remote-debugging-port), переменные
+ * разработки и запуск не из упаковки. Основной слой защиты — electronFuses
+ * в package.json, этот — второй и диагностический.
+ */
+function enforceLaunchEnvironment() {
+  let inspectorOpen = false;
+  try {
+    inspectorOpen = typeof inspector.url === "function" && inspector.url() != null;
+  } catch {
+    inspectorOpen = false;
+  }
+
+  const decision = decideLaunch({
+    argv: process.argv,
+    env: process.env,
+    packaged: app.isPackaged,
+    inspectorOpen,
+    root: ROOT,
+  });
+
+  for (const warning of decision.warnings ?? []) {
+    log(`Переменная окружения ${warning} проигнорирована: фьюзы бинарника её не применяют`);
+  }
+  if (decision.ok) return;
+
+  log("Запуск прерван:", decision.problems.join(", "));
+  // Заставе portable-сборки нечего ждать — окна не будет.
+  markSplashHandoff();
+  if (app.isPackaged) {
+    try {
+      dialog.showErrorBox(
+        "АгроПрогноз — Кукуруза",
+        "Приложение не может работать в этих условиях.\n\n" +
+          "Закройте отладчики и средства автоматизации, уберите переменные окружения разработки " +
+          "и запустите оригинальный AgroPrognoz.exe.",
+      );
+    } catch {
+      /* диалог недоступен — выходим молча */
+    }
+  }
+  app.exit(1);
+}
+
+enforceLaunchEnvironment();
+
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
@@ -525,14 +718,49 @@ if (!gotLock) {
 
   registerAppProtocol();
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    /**
+     * Разрешения: по умолчанию всё отклоняется. Исключение — буфер обмена,
+     * он нужен экрану активации (вставить код из письма, скопировать
+     * идентификатор компьютера для обращения в поддержку).
+     */
+    const CLIPBOARD_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write"]);
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      if (CLIPBOARD_PERMISSIONS.has(permission)) {
+        callback(true);
+        return;
+      }
       log("Разрешение отклонено:", permission);
       callback(false);
     });
-    session.defaultSession.setPermissionCheckHandler(() => false);
+    session.defaultSession.setPermissionCheckHandler((_wc, permission) => CLIPBOARD_PERMISSIONS.has(permission));
 
     if (!isDev) startAppProtocol();
+
+    // Сначала экран загрузки (лёгкий, появляется сразу), затем — до главного
+    // окна — проверка файлов и лицензии: renderer должен получить состояние
+    // лицензии вместе с первым же ответом IPC.
+    createSplashWindow();
+
+    licenseGuard = createGuard({
+      appRoot: ROOT,
+      userDataDir: app.getPath("userData"),
+      safeStorage,
+      log,
+    });
+    try {
+      const license = await licenseGuard.initialize();
+      log(
+        license.activated
+          ? `Лицензия активна (серийник ${license.serial}, бессрочная)`
+          : `Лицензия не активна${license.tampered ? ": файлы приложения изменены" : ""}`,
+      );
+    } catch (error) {
+      // Сбой проверки не должен оставлять человека перед пустым окном:
+      // показываем экран активации с сообщением об ошибке.
+      log("license: проверка не выполнена", error?.message ?? error);
+    }
+
     registerIpc();
 
     if (app.isPackaged) Menu.setApplicationMenu(null);
@@ -558,8 +786,6 @@ if (!gotLock) {
       );
     }
 
-    // Сначала экран загрузки (лёгкий, появляется сразу), затем главное окно.
-    createSplashWindow();
     createWindow();
 
     app.on("activate", () => {
