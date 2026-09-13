@@ -18,6 +18,6 @@ module.exports = {
       "MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw=" },
   ],
   revokedSerials: [
-
+    "dd765aac5612aeb9",
   ],
 };
