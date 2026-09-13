@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Генератор кодов активации — инструмент ВЛАДЕЛЬЦА приложения.
+ * Генератор кодов активации — инструмент ВЛАДЕЛЬЦА приложения (командная строка).
  *
  * Запускается на машине разработчика, в сборку не попадает. Здесь живёт работа
  * с закрытым ключом Ed25519: в приложение уходит только открытый ключ
  * (electron/license/keys.cjs), поэтому выдать себе код из установленного
  * приложения невозможно.
+ *
+ * Для выдачи кодов с формой и журналом есть «Студия лицензий»:
+ *   npm run license:studio     (scripts/license-studio)
  *
  * Команды:
  *   keygen [--key-id N] [--label TEXT]     создать ключевую пару и обновить keys.cjs
@@ -21,16 +24,29 @@
  *   secrets/ledger.csv         журнал выданных кодов (серийник → кому выдан)
  *
  * Дат в кодах нет: лицензия бессрочная, и аргумента «действует до» у issue нет
- * намеренно — выдать код со сроком этим инструментом нельзя.
+ * намеренно — выдать код со сроком этим инструментом нельзя. Дата встречается
+ * только в журнале выдачи (учёт владельца) и на лицензию не влияет.
  */
 
 import { createRequire } from "node:module";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+
+import {
+  agrolicFileName,
+  appendLedgerRows,
+  buildLicenseCode,
+  ledgerNow,
+  normalizeMachineCode,
+  privateKeyObject,
+  readKeysModule,
+  readSecret,
+  writeKeysModule,
+} from "./license-shared.mjs";
 
 const require = createRequire(import.meta.url);
 const core = require("../electron/license/core.cjs");
@@ -44,13 +60,14 @@ const LEDGER_FILE = path.join(ROOT, "secrets", "ledger.csv");
 
 const USAGE = `АгроПрогноз — инструмент владельца лицензий.
 
-  npm run license:keygen                       создать закрытый ключ (один раз)
-  npm run license:issue -- --count 5           выписать 5 бессрочных кодов
-  npm run license:issue -- --bind ZZG5-9ZKT    код, привязанный к компьютеру
-  npm run license:issue -- --out codes.txt     коды в файл (и запись в журнал)
-  node scripts/license-tool.mjs verify <код>   разобрать код
+  npm run license:studio                        студия выдачи кодов (форма + журнал)
+  npm run license:keygen                        создать закрытый ключ (один раз)
+  npm run license:issue -- --count 5            выписать 5 бессрочных кодов
+  npm run license:issue -- --bind ZZG5-9ZKT     код, привязанный к компьютеру
+  npm run license:issue -- --out codes.txt      коды в файл (и запись в журнал)
+  node scripts/license-tool.mjs verify <код>    разобрать код
   node scripts/license-tool.mjs revoke <серийник>   отозвать лицензию
-  node scripts/license-tool.mjs keys           открытые ключи и отзывы
+  node scripts/license-tool.mjs keys            открытые ключи и отзывы
 
 Закрытый ключ: ${rel(SECRET_FILE)} — в репозиторий не попадает, без него новые
 коды выписать нельзя. Дат в кодах нет: лицензия бессрочная.`;
@@ -85,92 +102,17 @@ function fail(message) {
   process.exit(1);
 }
 
-/* ── Ключи ───────────────────────────────────────────────────────────────── */
-
-function privateKeyObject(base64) {
-  return crypto.createPrivateKey({ key: Buffer.from(base64, "base64"), format: "der", type: "pkcs8" });
-}
-
-function publicBase64FromPrivate(base64) {
-  return crypto
-    .createPublicKey(privateKeyObject(base64))
-    .export({ format: "der", type: "spki" })
-    .toString("base64");
-}
-
-async function readSecret() {
-  // Ключ из окружения — для CI и для работы без файла на диске.
-  const fromEnv = process.env.AGRO_LICENSE_SECKEY;
-  if (fromEnv) {
-    const keyId = Number(process.env.AGRO_LICENSE_KEY_ID ?? 1);
-    return {
-      keys: [
-        {
-          keyId,
-          label: process.env.AGRO_LICENSE_KEY_LABEL ?? "env",
-          privateKey: fromEnv,
-          publicKey: publicBase64FromPrivate(fromEnv),
-        },
-      ],
-    };
-  }
-  if (!existsSync(SECRET_FILE)) {
-    fail(`Закрытый ключ не найден: ${rel(SECRET_FILE)}\n  Сначала выполните  npm run license:keygen  и сохраните файл в надёжном месте.`);
-  }
-  try {
-    const parsed = JSON.parse(await readFile(SECRET_FILE, "utf8"));
-    const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
-    return { keys: list.filter((entry) => entry && typeof entry.privateKey === "string") };
-  } catch (error) {
-    fail(`Файл закрытого ключа повреждён: ${error.message}`);
-  }
-  return { keys: [] };
-}
-
-/** Текущее содержимое keys.cjs: открытые ключи и отозванные серийники. */
-function readKeysModule() {
-  if (!existsSync(KEYS_FILE)) return { keys: [], revokedSerials: [] };
-  delete require.cache[require.resolve(KEYS_FILE)];
-  const loaded = require(KEYS_FILE);
-  return {
-    keys: Array.isArray(loaded?.keys) ? loaded.keys : [],
-    revokedSerials: Array.isArray(loaded?.revokedSerials) ? loaded.revokedSerials : [],
-  };
-}
-
-async function writeKeysModule({ keys, revokedSerials }) {
-  const keyLines = keys.map(
-    (entry) => `    { keyId: ${entry.keyId}, label: ${JSON.stringify(entry.label ?? "")}, publicKey:\n      "${entry.publicKey}" },`,
-  );
-  const revokedLines = revokedSerials.map((serial) => `    "${serial}",`);
-  const body = `/**
- * Открытые ключи лицензий и список отозванных лицензий.
- *
- * Файл создаётся командой  npm run license:keygen  (scripts/license-tool.mjs)
- * и является единственной доверенной точкой проверки подписи в приложении.
- * Закрытого ключа здесь нет и быть не должно: он хранится у владельца
- * приложения в secrets/license-key.json (каталог в .gitignore).
- *
- * revokedSerials — серийные номера (hex, 16 символов) лицензий, которые
- * владелец отозвал: такой код перестанет активироваться в следующей сборке.
- */
-
-"use strict";
-
-module.exports = {
-  keys: [
-${keyLines.join("\n") || ""}
-  ],
-  revokedSerials: [
-${revokedLines.join("\n") || ""}
-  ],
+const fsIo = {
+  readFile: (file) => readFile(file, "utf8"),
+  writeFile: (file, body, options) => writeFile(file, body, options),
+  rename,
+  existsSync,
 };
-`;
-  await writeFile(KEYS_FILE, body, "utf8");
-}
+
+/* ── Команды ─────────────────────────────────────────────────────────────── */
 
 async function commandKeygen(flags) {
-  const existing = existsSync(SECRET_FILE) ? (await readSecret()).keys : [];
+  const existing = existsSync(SECRET_FILE) ? (await readSecret({ secretFile: SECRET_FILE, env: {}, ...fsIo })).keys : [];
   const maxKeyId = existing.length ? Math.max(...existing.map((entry) => Number(entry.keyId) || 0)) : 0;
   const keyId = Number(flags["key-id"] ?? maxKeyId + 1);
   if (!Number.isInteger(keyId) || keyId < 1 || keyId > 255) fail("--key-id — целое число от 1 до 255");
@@ -192,12 +134,12 @@ async function commandKeygen(flags) {
     mode: 0o600,
   });
 
-  const published = readKeysModule();
+  const published = readKeysModule(KEYS_FILE, { existsSync });
   const keys = [
     ...published.keys.filter((item) => item.keyId !== keyId),
     { keyId, label, publicKey: entry.publicKey },
   ].sort((a, b) => a.keyId - b.keyId);
-  await writeKeysModule({ keys, revokedSerials: published.revokedSerials });
+  await writeKeysModule(KEYS_FILE, { keys, revokedSerials: published.revokedSerials }, { writeFile });
 
   console.log(`\n✔ Ключ key-id=${keyId} (${label}) создан.`);
   console.log(`  Закрытый ключ: ${rel(SECRET_FILE)}  ← никому не передавать, в git не попадает`);
@@ -207,14 +149,14 @@ async function commandKeygen(flags) {
 }
 
 async function commandIssue(flags) {
-  const secret = await readSecret();
-  if (!secret.keys.length) fail("Закрытый ключ не найден — выполните npm run license:keygen");
+  const secret = await readSecret({ secretFile: SECRET_FILE, ...fsIo }).catch((error) => fail(error.message));
+  if (!secret?.keys.length) fail("Закрытый ключ не найден — выполните npm run license:keygen");
 
   const keyId = flags["key-id"] === undefined ? secret.keys[secret.keys.length - 1].keyId : Number(flags["key-id"]);
   const key = secret.keys.find((entry) => entry.keyId === keyId);
   if (!key) fail(`В ${rel(SECRET_FILE)} нет ключа с key-id=${keyId}`);
 
-  const published = readKeysModule();
+  const published = readKeysModule(KEYS_FILE, { existsSync });
   if (!published.keys.some((entry) => entry.keyId === keyId)) {
     fail(`Открытый ключ key-id=${keyId} не добавлен в ${rel(KEYS_FILE)} — приложение такой код не примет`);
   }
@@ -225,7 +167,7 @@ async function commandIssue(flags) {
   let bound = false;
   let shortId = "";
   if (typeof flags.bind === "string" && flags.bind.trim()) {
-    const resolved = core.resolveBindTarget(flags.bind);
+    const resolved = normalizeMachineCode(flags.bind);
     if (!resolved.ok) fail(`--bind: ${resolved.message}`);
     bound = true;
     shortId = resolved.shortId;
@@ -234,13 +176,10 @@ async function commandIssue(flags) {
   const signer = privateKeyObject(key.privateKey);
   const rows = [];
   for (let index = 0; index < count; index += 1) {
-    const payload = bound
-      ? bindPayload({ keyId, shortId })
-      : core.buildPayload({ keyId, bound: false });
-    const signature = crypto.sign(null, Buffer.from(payload), signer);
+    const issued = buildLicenseCode({ privateKey: signer, keyId, bound, shortId });
     rows.push({
-      serialHex: Buffer.from(payload.subarray(4, 4 + core.SERIAL_BYTES)).toString("hex"),
-      code: core.formatCode(Buffer.concat([Buffer.from(payload), Buffer.from(signature)])),
+      serialHex: issued.serialHex,
+      code: issued.code,
       keyId,
       bound,
       shortId,
@@ -255,45 +194,62 @@ async function commandIssue(flags) {
   if (!flags["no-ledger"]) {
     const ledger = path.resolve(String(flags.ledger ?? LEDGER_FILE));
     await mkdir(path.dirname(ledger), { recursive: true });
-    const header = existsSync(ledger) ? "" : "serial;keyId;bound;shortId;code;note\n";
-    const note = String(flags.note ?? "").replace(/[\r\n;]/g, " ");
-    const lines = rows.map((row) => `${row.serialHex};${row.keyId};${row.bound ? "yes" : "no"};${row.shortId};${row.code};${note}`);
-    await appendFile(ledger, header + lines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+    const note = String(flags.note ?? "");
+    await appendLedgerRows(
+      ledger,
+      rows.map((row) => ({
+        issuedAt: ledgerNow(),
+        serial: row.serialHex,
+        keyId: row.keyId,
+        kind: row.bound ? "personal" : "universal",
+        shortId: row.shortId,
+        code: row.code,
+        name: note,
+        note,
+        status: "active",
+        revokedAt: "",
+        replaces: "",
+      })),
+      fsIo,
+    );
     console.log(`Журнал: ${rel(ledger)}`);
   }
   if (flags.out) console.log(`Файл:   ${rel(path.resolve(String(flags.out)))}`);
 
   console.log(
     `\nВыписано кодов: ${rows.length} · ключ key-id=${keyId} · лицензия БЕССРОЧНАЯ` +
-      (bound ? ` · привязка к компьютеру ${core.prettyShortId(shortId)}` : "") +
+      (bound ? ` · привязка к компьютеру ${prettyShort(shortId)}` : "") +
       "\n",
   );
   for (const row of rows) {
-    console.log(`  Серийник ${core.prettySerial(row.serialHex)}`);
+    console.log(`  Серийник ${prettySerial(row.serialHex)}`);
     console.log(`  ${row.code}\n`);
+    console.log(`  Файл для покупателя: ${agrolicFileName(row.serialHex)} (создаёт студия лицензий)\n`);
   }
-  if (!flags.out) console.log("  Подсказка: --out codes.txt сохранит коды в файл, --note «Иванов» — пометку в журнал.\n");
+  if (!flags.out) {
+    console.log("  Подсказка: --out codes.txt сохранит коды в файл, --note «Иванов» — пометку в журнал.");
+    console.log("  Персональные коды с формой и журналом удобнее выписывать в студии: npm run license:studio\n");
+  }
 }
 
-/**
- * Персональный код: отпечаток считается от короткого идентификатора, поэтому
- * достаточно того, что пользователь продиктовал с экрана активации.
- */
-function bindPayload({ keyId, shortId }) {
-  const payload = core.buildPayload({ keyId, bound: true });
-  payload.set(core.fingerprintFromShortId(shortId), core.PAYLOAD_LENGTH - 4);
-  return payload;
+function prettyShort(shortId) {
+  return String(shortId ?? "").match(/.{1,4}/g)?.join("-") ?? shortId;
+}
+
+function prettySerial(serialHex) {
+  const upper = String(serialHex ?? "").toUpperCase();
+  return upper.match(/.{1,4}/g)?.join("-") ?? upper;
 }
 
 async function commandVerify(positional, flags) {
   if (!positional.length) fail("Укажите код или путь к файлу с кодом");
-  const published = readKeysModule();
+  const published = readKeysModule(KEYS_FILE, { existsSync });
   if (!published.keys.length) fail(`В ${rel(KEYS_FILE)} нет открытых ключей`);
 
   let machineId = "";
   let machineShortId = "";
   if (typeof flags.machine === "string" && flags.machine.trim()) {
-    const resolved = core.resolveBindTarget(flags.machine);
+    const resolved = normalizeMachineCode(flags.machine);
     if (!resolved.ok) fail(`--machine: ${resolved.message}`);
     machineShortId = resolved.shortId;
   }
@@ -346,25 +302,25 @@ function reasonText(reason) {
 
 async function commandRevoke(serials) {
   if (!serials.length) fail("Укажите серийные номера (hex, как их печатают issue и verify)");
-  const published = readKeysModule();
+  const published = readKeysModule(KEYS_FILE, { existsSync });
   const revoked = new Set(published.revokedSerials.map((value) => value.toLowerCase()));
   for (const raw of serials) {
     const clean = raw.replace(/[^0-9a-fA-F]/g, "").toLowerCase();
-    if (clean.length !== core.SERIAL_BYTES * 2) fail(`Серийник «${raw}» не похож на ${core.SERIAL_BYTES * 2} hex-символов`);
+    if (clean.length !== 16) fail(`Серийник «${raw}» не похож на 16 hex-символов`);
     revoked.add(clean);
   }
-  await writeKeysModule({ keys: published.keys, revokedSerials: [...revoked].sort() });
+  await writeKeysModule(KEYS_FILE, { keys: published.keys, revokedSerials: [...revoked].sort() }, { writeFile });
   console.log(`\n✔ Отозвано лицензий: ${revoked.size}. Обновлён ${rel(KEYS_FILE)}`);
   console.log("  Код с этим серийником перестанет активироваться в следующей сборке приложения.\n");
 }
 
 async function commandKeys() {
-  const published = readKeysModule();
+  const published = readKeysModule(KEYS_FILE, { existsSync });
   console.log(`\n${rel(KEYS_FILE)}`);
   if (!published.keys.length) console.log("  (пусто — выполните npm run license:keygen)");
   for (const entry of published.keys) console.log(`  key-id=${entry.keyId} · ${entry.label || "-"} · ${entry.publicKey.slice(0, 20)}…`);
   console.log(`  Отозванных лицензий: ${published.revokedSerials.length}`);
-  const secret = existsSync(SECRET_FILE) ? await readSecret() : { keys: [] };
+  const secret = existsSync(SECRET_FILE) ? await readSecret({ secretFile: SECRET_FILE, ...fsIo }) : { keys: [] };
   console.log(`  Закрытых ключей локально: ${secret.keys.length} (${rel(SECRET_FILE)})\n`);
 }
 
@@ -372,15 +328,15 @@ function commandFingerprint(args) {
   if (!args.length) fail("Укажите идентификатор компьютера — тот, что показывает экран активации");
   console.log("");
   for (const arg of args) {
-    const resolved = core.resolveBindTarget(arg);
+    const resolved = normalizeMachineCode(arg);
     if (!resolved.ok) {
       console.log(`  ${arg}\n    ✘ ${resolved.message}\n`);
       continue;
     }
     console.log(`  ${arg}`);
-    console.log(`    короткий id: ${core.prettyShortId(resolved.shortId)}`);
+    console.log(`    короткий id: ${prettyShort(resolved.shortId)}`);
     console.log(`    отпечаток:   ${Buffer.from(core.fingerprintFromShortId(resolved.shortId)).toString("hex")}`);
-    console.log(`    код:         license:issue -- --bind ${core.prettyShortId(resolved.shortId)}\n`);
+    console.log(`    код:         license:issue -- --bind ${prettyShort(resolved.shortId)}\n`);
   }
 }
 

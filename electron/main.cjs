@@ -41,6 +41,7 @@ const {
   app,
   BrowserWindow,
   Menu,
+  clipboard,
   dialog,
   ipcMain,
   nativeImage,
@@ -57,6 +58,7 @@ const path = require("node:path");
 const { createFileStore } = require("./persistence.cjs");
 const { CSP_PRODUCTION, EXTERNAL_LINK_HOSTS } = require("./csp.cjs");
 const { createGuard } = require("./license/guard.cjs");
+const licenseRequest = require("./license/request.cjs");
 const { decideLaunch, hardenWebContentsAgainstDebugging } = require("./license/shield.cjs");
 
 const PROTOCOL_NAME = "app";
@@ -552,6 +554,101 @@ function registerIpc() {
   });
 
   /* ── Служебные каналы ─────────────────────────────────────────────────── */
+
+  /**
+   * Заявка на персональный код (экран активации, до ввода кода).
+   *
+   * Текст заявки и публичный контакт владельца собираются здесь, в main
+   * process: renderer не знает ни адреса, ни телефона и не умеет строить
+   * ссылки на мессенджеры. Отправка — только через собственные мессенджер и
+   * почту покупателя: приложение остаётся офлайн, никаких данных наружу оно
+   * само не передаёт. Дат и сроков в заявке нет: лицензия бессрочная.
+   */
+  ipcMain.handle("agro:license-request-info", (event) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    const snapshot = licenseGuard ? licenseGuard.status() : null;
+    const text = licenseRequest.buildRequestText({
+      machineShortId: snapshot?.machineIdShort ?? "",
+      machineId: snapshot?.machineId ?? "",
+      version: app.getVersion(),
+    });
+    return {
+      ok: true,
+      text,
+      contact: licenseRequest.publicContact(),
+      channels: licenseRequest.channelAvailability(),
+      fileName: licenseRequest.requestFileName(snapshot?.machineIdShort ?? ""),
+    };
+  });
+
+  /** Открыть канал связи с готовым текстом заявки (tg://, wa.me, mailto:). */
+  ipcMain.handle("agro:license-request-open", async (event, payload) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    const channel = String(payload?.channel ?? "");
+    if (!licenseRequest.REQUEST_CHANNELS.includes(channel)) {
+      return { ok: false, code: "INVALID_INPUT", message: "Неизвестный канал связи" };
+    }
+    const snapshot = licenseGuard ? licenseGuard.status() : null;
+    const text = licenseRequest.buildRequestText({
+      machineShortId: snapshot?.machineIdShort ?? "",
+      machineId: snapshot?.machineId ?? "",
+      version: app.getVersion(),
+    });
+    // Текст всегда копируется в буфер: Telegram не принимает текст в ссылке,
+    // и покупателю останется только вставить его в чат.
+    let copied = false;
+    try {
+      clipboard.writeText(text);
+      copied = true;
+    } catch (error) {
+      log("clipboard:", error?.code ?? error?.message);
+    }
+    const url = licenseRequest.buildChannelUrl(channel, text);
+    if (!url) {
+      return { ok: false, code: "NO_CONTACT", copied, message: "Этот канал связи не настроен" };
+    }
+    try {
+      await shell.openExternal(url);
+      return { ok: true, copied };
+    } catch (error) {
+      log("request-open:", error?.code ?? error?.message);
+      return {
+        ok: false,
+        code: "OPEN_FAILED",
+        copied,
+        message: "Не удалось открыть мессенджер. Текст заявки скопирован — отправьте его владельцу вручную.",
+      };
+    }
+  });
+
+  /** Запасной путь: сохранить заявку файлом (.agrorequest) и переслать вручную. */
+  ipcMain.handle("agro:license-request-save", async (event) => {
+    if (!isTrustedSender(event)) return FORBIDDEN;
+    const snapshot = licenseGuard ? licenseGuard.status() : null;
+    const text = licenseRequest.buildRequestText({
+      machineShortId: snapshot?.machineIdShort ?? "",
+      machineId: snapshot?.machineId ?? "",
+      version: app.getVersion(),
+    });
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const dialogResult = await dialog.showSaveDialog(win ?? mainWindow, {
+      title: "Заявка на код активации",
+      defaultPath: licenseRequest.requestFileName(snapshot?.machineIdShort ?? ""),
+      filters: [{ name: "Заявка на код активации", extensions: ["agrorequest"] }, { name: "Все файлы", extensions: ["*"] }],
+    });
+    if (dialogResult.canceled || !dialogResult.filePath) {
+      return { ok: false, code: "canceled", message: "Сохранение отменено" };
+    }
+    try {
+      await fs.promises.writeFile(dialogResult.filePath, `${text}\n`, "utf8");
+      return { ok: true, fileName: path.basename(dialogResult.filePath) };
+    } catch (error) {
+      log("request-save:", error?.code ?? error?.message);
+      return { ok: false, code: "WRITE_FAILED", message: "Не удалось записать файл заявки" };
+    }
+  });
+
+
 
   ipcMain.on("agro:app-ready", (event) => {
     if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) revealMainWindow();

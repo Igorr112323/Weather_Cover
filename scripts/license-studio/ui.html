@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Студия лицензий — АгроПрогноз</title>
+<style>
+  :root {
+    --bg: #f4f7f4; --surface: #ffffff; --border: #dbe5dc; --text: #18271e;
+    --muted: #5f7264; --green: #1f7a3d; --green-bg: #e7f3ea; --danger: #b3261e;
+    --danger-bg: #fdeceb; --amber: #8a5a00; --amber-bg: #fff4dd;
+    --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Inter", "Segoe UI", Arial, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    background: var(--green-bg); color: var(--green); font-size: 12px; font-weight: 600;
+  }
+  .badge--warn { background: var(--amber-bg); color: var(--amber); }
+  main {
+    display: grid; grid-template-columns: minmax(360px, 460px) 1fr;
+    gap: 20px; padding: 20px 24px 40px; align-items: start; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+  }
+  h2 { font-size: 15px; margin: 0; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .field input {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--text); width: 100%;
+  }
+  .field input:focus { outline: 2px solid var(--green-bg); border-color: var(--green); }
+  .field .hint { font-size: 12px; color: var(--muted); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button {
+    font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: #fff; color: var(--text); cursor: pointer;
+  }
+  button:hover { border-color: var(--green); }
+  button.primary { background: var(--green); border-color: var(--green); color: #fff; }
+  button.primary:hover { filter: brightness(1.07); }
+  button.danger { color: var(--danger); border-color: #ecc8c5; }
+  button.danger:hover { border-color: var(--danger); background: var(--danger-bg); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .note {
+    display: flex; gap: 8px; padding: 10px 12px; border-radius: 8px; font-size: 13px;
+    border: 1px solid transparent; white-space: pre-line;
+  }
+  .note--error { background: var(--danger-bg); color: var(--danger); border-color: #ecc8c5; }
+  .note--ok { background: var(--green-bg); color: var(--green); border-color: #cfe8d6; }
+  .note--warn { background: var(--amber-bg); color: var(--amber); border-color: #f0dcae; }
+  .result { border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .result .code {
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.04em; word-break: break-all;
+    background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 10px;
+    user-select: all; cursor: copy;
+  }
+  .result .meta { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  .result .meta b { color: var(--text); font-weight: 600; }
+  .message {
+    font-size: 13px; white-space: pre-wrap; background: var(--bg); border-radius: 8px;
+    padding: 10px; border: 1px solid var(--border); max-height: 220px; overflow: auto;
+  }
+  .journal-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .journal-tools input { flex: 1 1 220px; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--bg); font-size: 12px; color: var(--muted); z-index: 2; }
+  tr:last-child td { border-bottom: none; }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill--active { background: var(--green-bg); color: var(--green); }
+  .pill--revoked { background: var(--danger-bg); color: var(--danger); }
+  .pill--universal { background: var(--amber-bg); color: var(--amber); }
+  .pill--personal { background: #e8eef8; color: #2b4d8f; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+  footer { padding: 0 24px 24px; color: var(--muted); font-size: 12px; max-width: 1400px; margin: 0 auto; }
+  .hidden { display: none !important; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+  .check input { margin-top: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Студия лицензий — «АгроПрогноз — Кукуруза»</h1>
+    <div class="sub" id="subtitle">Выдача кодов активации · офлайн · закрытый ключ не покидает этот компьютер</div>
+  </div>
+  <span class="badge" title="У лицензии нет срока действия: поле «действует до» не существует">Лицензия бессрочная</span>
+  <span class="badge badge--warn" id="keys-badge">…</span>
+</header>
+
+<main>
+  <section id="issue-section">
+    <h2>Новая лицензия</h2>
+
+    <div class="field">
+      <label for="machine">Код компьютера покупателя</label>
+      <input id="machine" placeholder="ZZG5-9ZKT" autocomplete="off" spellcheck="false">
+      <span class="hint">Скопируйте из заявки: короткий код (8 символов) или полный идентификатор (64 символа). Регистр, пробелы и похожие на 1/0 буквы не мешают.</span>
+    </div>
+
+    <div class="field">
+      <label for="name">Имя покупателя *</label>
+      <input id="name" placeholder="Иванов И.И." autocomplete="off">
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="phone">Телефон</label>
+        <input id="phone" placeholder="+7 900 000-00-00" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="email">Почта</label>
+        <input id="email" placeholder="pupkin@example.com" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="note">Пометка</label>
+      <input id="note" placeholder="оплата, договорённости, подробности" autocomplete="off">
+    </div>
+
+    <div class="check">
+      <input type="checkbox" id="universal">
+      <label for="universal">Универсальный код (работает на <b>любом</b> компьютере) — только по договорённости с покупателем</label>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="issue">Сгенерировать код</button>
+    </div>
+
+    <div id="issue-note" class="hidden"></div>
+    <div id="confirm-box" class="hidden">
+      <div class="note note--warn" id="confirm-text"></div>
+      <div class="actions">
+        <button class="primary" id="confirm-yes">Продолжить</button>
+        <button id="confirm-no">Отмена</button>
+      </div>
+    </div>
+
+    <div id="result" class="result hidden">
+      <div class="code" id="result-code" title="Щёлкните, чтобы выделить"></div>
+      <div class="meta" id="result-meta"></div>
+      <div class="actions">
+        <button id="copy-code">Скопировать код</button>
+        <button id="copy-message">Скопировать текст сообщения</button>
+        <button id="save-agrolic">Сохранить файл .agrolic</button>
+      </div>
+      <div class="message" id="result-message"></div>
+      <div id="delivery" class="hidden">
+        <div class="meta" id="delivery-hint"></div>
+        <div class="actions">
+          <button id="send-sms" class="hidden">Отправить СМС</button>
+          <button id="send-email" class="hidden">Отправить письмом</button>
+        </div>
+        <div class="row hidden" id="telegram-row">
+          <div class="field">
+            <label for="tg-chat">chat_id покупателя в Telegram</label>
+            <input id="tg-chat" placeholder="например, 123456789" autocomplete="off">
+            <span class="hint">Покупатель должен один раз написать боту /start — тогда у него появится chat_id.</span>
+          </div>
+          <div class="actions" style="align-items: flex-end;">
+            <button id="send-telegram">Отправить в Telegram</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="journal-section">
+    <h2>Журнал выдачи <span class="sub" id="journal-count"></span></h2>
+    <div class="journal-tools">
+      <input id="search" placeholder="Поиск: имя, серийник, телефон, почта, код компьютера…" autocomplete="off">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Дата выдачи</th><th>Серийник</th><th>Кому</th><th>Телефон</th><th>Почта</th>
+            <th>Компьютер</th><th>Тип</th><th>Статус</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="journal-body"></tbody>
+      </table>
+    </div>
+    <div class="empty hidden" id="journal-empty">Ничего не найдено</div>
+    <div class="note note--warn" id="delivery-missing"></div>
+  </section>
+</main>
+
+<footer>
+  Даты встречаются только в этом журнале — это учёт выдачи, на работу лицензии они не влияют.
+  Лицензия бессрочная: поля «действует до» не существует ни в коде активации, ни в файле лицензии.
+  Отправка сообщений покупателю идёт с этого компьютера и только по вашей команде.
+</footer>
+
+<script>
+"use strict";
+
+/* Токен запуска: страница открыта командой npm run license:studio. */
+const TOKEN = new URLSearchParams(location.search).get("token") ?? "";
+
+const state = {
+  ledger: [],
+  result: null,
+  confirm: null,   // { kind: "force"|"universal", payload }
+};
+
+const $ = (id) => document.getElementById(id);
+
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json", "x-agro-studio": TOKEN },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (response.status === 403) throw new Error(data.message || "Студия запущена без этой страницы");
+  return data;
+}
+
+function showNote(node, text, tone) {
+  node.textContent = text;
+  node.className = `note note--${tone}`;
+}
+
+function prettyShortId(shortId) {
+  return shortId ? String(shortId).match(/.{1,4}/g).join("-") : "—";
+}
+
+function prettySerial(serialHex) {
+  return String(serialHex ?? "").toUpperCase().match(/.{1,4}/g).join("-");
+}
+
+async function copy(text, okMessage) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showNote($("issue-note"), okMessage, "ok");
+  } catch {
+    showNote($("issue-note"), "Не удалось скопировать — выделите текст вручную", "error");
+  }
+}
+
+function download(name, content) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/* ── Выдача ─────────────────────────────────────────────────────────────── */
+
+function formPayload() {
+  return {
+    machineCode: $("machine").value.trim(),
+    name: $("name").value.trim(),
+    phone: $("phone").value.trim(),
+    email: $("email").value.trim(),
+    note: $("note").value.trim(),
+    universal: $("universal").checked,
+  };
+}
+
+async function generate(extra = {}) {
+  const payload = { ...formPayload(), ...extra };
+  $("issue").disabled = true;
+  $("issue").textContent = "Генерируем…";
+  try {
+    const result = await api("/api/issue", payload);
+    hideConfirm();
+    if (!result.ok) {
+      if (result.needForce) {
+        askConfirm("force", `Повторная выдача. ${result.message}`, payload);
+        return;
+      }
+      if (result.needConfirmUniversal) {
+        askConfirm("universal", result.message, { ...payload, confirmUniversal: true });
+        return;
+      }
+      showNote($("issue-note"), result.message, "error");
+      return;
+    }
+    showResult(result);
+    showNote($("issue-note"), "Код выписан и записан в журнал. Лицензия бессрочная.", "ok");
+    await reloadState();
+  } catch (error) {
+    showNote($("issue-note"), String(error.message ?? error), "error");
+  } finally {
+    $("issue").disabled = false;
+    $("issue").textContent = "Сгенерировать код";
+  }
+}
+
+function askConfirm(kind, text, payload) {
+  state.confirm = { kind, payload };
+  $("confirm-text").textContent = text;
+  $("confirm-box").classList.remove("hidden");
+}
+
+function hideConfirm() {
+  state.confirm = null;
+  $("confirm-box").classList.add("hidden");
+}
+
+function showResult(result) {
+  state.result = result;
+  $("result").classList.remove("hidden");
+  $("result-code").textContent = result.code;
+  const meta = $("result-meta");
+  meta.replaceChildren();
+  const add = (label, value) => {
+    const line = document.createElement("div");
+    const strong = document.createElement("b");
+    strong.textContent = `${label}: `;
+    line.append(strong, document.createTextNode(value));
+    meta.append(line);
+  };
+  add("Серийник", result.serial);
+  add("Кому", result.row.name || "—");
+  add("Компьютер", result.shortIdPretty || "—");
+  add("Тип", result.universal ? "универсальный код" : "персональный код");
+  add("Срок", "бессрочно — дата не задаётся");
+  if (result.replaced && result.replaced.length) add("Заменён код", result.replaced.join(", "));
+  $("result-message").textContent = result.messageText;
+
+  const delivery = state.delivery;
+  if (delivery && (delivery.sms || delivery.telegram || delivery.smtp)) {
+    $("delivery").classList.remove("hidden");
+    const hint = $("delivery-hint");
+    hint.replaceChildren();
+    const line = document.createElement("div");
+    line.textContent = "Доставка (отправляется с этого компьютера, только по вашей команде):";
+    hint.append(line);
+    $("send-sms").classList.toggle("hidden", !delivery.sms);
+    $("send-email").classList.toggle("hidden", !delivery.smtp);
+    $("telegram-row").classList.toggle("hidden", !delivery.telegram);
+    if (delivery.sms) {
+      const test = document.createElement("div");
+      test.textContent = `Тест доставки СМС: ${delivery.testPhone}`;
+      hint.append(test);
+    }
+  } else {
+    $("delivery").classList.add("hidden");
+  }
+}
+
+/* ── Журнал ─────────────────────────────────────────────────────────────── */
+
+function renderJournal() {
+  const query = $("search").value.trim().toLowerCase();
+  const rows = state.ledger.filter((row) => {
+    if (!query) return true;
+    const haystack = [row.name, row.phone, row.email, row.serial, row.shortId, row.code, row.note, row.kind, row.status]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+
+  const body = $("journal-body");
+  body.replaceChildren();
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+
+    const cell = (value, mono = false) => {
+      const td = document.createElement("td");
+      td.textContent = value || "—";
+      if (mono) td.className = "mono";
+      tr.append(td);
+      return td;
+    };
+    cell(row.issuedAt || "—");
+    cell(prettySerial(row.serial), true);
+    cell(row.name);
+    cell(row.phone);
+    cell(row.email);
+    cell(row.kind === "personal" ? prettyShortId(row.shortId) : "—", true);
+
+    const type = document.createElement("td");
+    const typePill = document.createElement("span");
+    typePill.className = `pill pill--${row.kind === "universal" ? "universal" : "personal"}`;
+    typePill.textContent = row.kind === "universal" ? "универсальный" : "персональный";
+    type.append(typePill);
+    tr.append(type);
+
+    const status = document.createElement("td");
+    const statusPill = document.createElement("span");
+    statusPill.className = `pill pill--${row.status === "revoked" ? "revoked" : "active"}`;
+    statusPill.textContent = row.status === "revoked" ? "отозван" : "действует";
+    status.append(statusPill);
+    tr.append(status);
+
+    const action = document.createElement("td");
+    if (row.status !== "revoked" && row.serial) {
+      const button = document.createElement("button");
+      button.className = "danger";
+      button.textContent = "Отозвать";
+      button.title = "Код перестанет активироваться в следующей сборке приложения";
+      button.addEventListener("click", () => revoke(row));
+      action.append(button);
+    }
+    tr.append(action);
+
+    body.append(tr);
+  }
+
+  $("journal-empty").classList.toggle("hidden", rows.length > 0);
+  $("journal-count").textContent = `— записей: ${state.ledger.length}, показано: ${rows.length}`;
+}
+
+async function revoke(row) {
+  if (!window.confirm(`Отозвать лицензию ${prettySerial(row.serial)} (${row.name || "без имени"})?\nКод перестанет активироваться в следующей сборке приложения.`)) return;
+  try {
+    const result = await api("/api/revoke", { serial: row.serial });
+    if (!result.ok) {
+      showNote($("issue-note"), result.message, "error");
+      return;
+    }
+    showNote($("issue-note"), `Лицензия ${prettySerial(row.serial)} отозвана. Не забудьте сделать новую сборку приложения.`, "ok");
+    await reloadState();
+  } catch (error) {
+    showNote($("issue-note"), String(error.message ?? error), "error");
+  }
+}
+
+async function reloadState() {
+  const info = await api("/api/state");
+  state.ledger = info.ledger ?? [];
+  state.delivery = info.delivery ?? {};
+  $("keys-badge").textContent = `ключи: ${info.keys.map((key) => `key-id=${key.keyId}`).join(", ")} · отзывов: ${info.revokedCount}`;
+  const missing = [];
+  if (!state.delivery.sms) missing.push("СМС (AGRO_SMS_PROVIDER + ключ провайдера)");
+  if (!state.delivery.telegram) missing.push("Telegram-бот (AGRO_TG_BOT_TOKEN)");
+  if (!state.delivery.smtp) missing.push("почта (AGRO_SMTP_HOST/USER/PASS)");
+  const note = $("delivery-missing");
+  if (missing.length) {
+    note.textContent = `Автоотправка не включена: не заданы ${missing.join(", ")}. Код всё равно можно скопировать, сохранить в .agrolic и отправить вручную.`;
+    note.classList.remove("hidden");
+  } else {
+    note.classList.add("hidden");
+  }
+  renderJournal();
+}
+
+/* ── Доставка ───────────────────────────────────────────────────────────── */
+
+async function deliver(channel, to, text) {
+  try {
+    const result = await api("/api/send", { channel, to, text });
+    showNote($("issue-note"), result.message, result.ok ? "ok" : "error");
+  } catch (error) {
+    showNote($("issue-note"), String(error.message ?? error), "error");
+  }
+}
+
+/* ── События ────────────────────────────────────────────────────────────── */
+
+$("issue").addEventListener("click", () => generate());
+$("confirm-yes").addEventListener("click", () => {
+  const confirm = state.confirm;
+  if (!confirm) return;
+  if (confirm.kind === "force") generate({ ...confirm.payload, force: true });
+  else generate({ ...confirm.payload, confirmUniversal: true });
+});
+$("confirm-no").addEventListener("click", hideConfirm);
+$("universal").addEventListener("change", () => {
+  if ($("universal").checked) {
+    showNote(
+      $("issue-note"),
+      "Универсальный код работает на любом компьютере — его можно передать дальше, и отозвать можно будет только новой сборкой. Персональный код надёжнее: покупатель прислал код компьютера — выписывайте персональный.",
+      "warn",
+    );
+  } else {
+    $("issue-note").classList.add("hidden");
+  }
+});
+$("result-code").addEventListener("click", (event) => {
+  const range = document.createRange();
+  range.selectNodeContents(event.currentTarget);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+});
+$("copy-code").addEventListener("click", () => {
+  if (state.result) copy(state.result.code, "Код скопирован");
+});
+$("copy-message").addEventListener("click", () => {
+  if (state.result) copy(state.result.messageText, "Текст сообщения скопирован");
+});
+$("save-agrolic").addEventListener("click", () => {
+  if (state.result) download(state.result.agrolic.fileName, state.result.agrolic.content);
+});
+$("send-sms").addEventListener("click", () => {
+  const to = state.result?.row?.phone || $("phone").value.trim() || state.delivery?.testPhone;
+  if (!to) {
+    showNote($("issue-note"), "Укажите телефон покупателя в форме", "error");
+    return;
+  }
+  deliver("sms", to, state.result.smsText);
+});
+$("send-email").addEventListener("click", () => {
+  const to = state.result?.row?.email || $("email").value.trim();
+  if (!to) {
+    showNote($("issue-note"), "Укажите почту покупателя в форме", "error");
+    return;
+  }
+  deliver("email", to, state.result.messageText);
+});
+$("send-telegram").addEventListener("click", () => {
+  const chat = $("tg-chat").value.trim();
+  if (!chat) {
+    showNote($("issue-note"), "Укажите chat_id покупателя", "error");
+    return;
+  }
+  deliver("telegram", chat, state.result.messageText);
+});
+$("search").addEventListener("input", renderJournal);
+
+/* Токен потерян (страницу открыли без ?token=) — честно сказать и не работать. */
+if (!TOKEN) {
+  document.body.replaceChildren();
+  const notice = document.createElement("div");
+  notice.className = "note note--error";
+  notice.style.margin = "24px";
+  notice.textContent = "Страница открыта без ключа запуска. Закройте её и выполните в терминале: npm run license:studio";
+  document.body.append(notice);
+} else {
+  reloadState().catch((error) => {
+    showNote($("issue-note"), `Студия не отвечает: ${error.message ?? error}`, "error");
+  });
+}
+</script>
+</body>
+</html>
