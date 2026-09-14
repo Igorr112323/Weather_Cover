@@ -19,6 +19,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -64,6 +65,13 @@ describe("личная страница собрана из исходников
     assert.ok(bundle.includes("const AGRO_APP_KEYS ="), "бандл не отдаёт ключи приложения странице");
     const injected = JSON.parse(/const AGRO_APP_KEYS = (\{.*\});/.exec(bundle)[1]);
     assert.deepEqual(injected, { keys: appKeys.keys, revokedSerials: appKeys.revokedSerials }, "в страницах не тот список ключей, что у приложения");
+  });
+
+  it("в странице из репозитория ключ НЕ вшит", () => {
+    // Иначе закрытый ключ утёк бы в публичный репозиторий вместе с файлом.
+    const text = fs.readFileSync(HTML_FILE, "utf8");
+    assert.ok(text.includes('const BAKED_SECRET = "";'), "в репозиторий должен попадать файл с пустым BAKED_SECRET");
+    assert.ok(!text.includes(["MC4CAQAw", "BQYDK2Vw"].join(""), "в файле из git не должно быть закрытого ключа"));
   });
 
   it("страница не ходит в сеть и не содержит закрытого ключа", () => {
@@ -170,6 +178,59 @@ describe("личная страница выдаёт код, который пр
     // Сетевой буфер в фиктивном DOM не проверяем: важен ответ на действие.
     await dom.click("out");
     assert.match(dom.get("msg").textContent, /скопирован|Ctrl\+C/, "клик по полю с кодом не отреагировал");
+    dom.close();
+  });
+});
+
+/* ─────────────────── страница с вшитым ключом (license:page) ─────────────── */
+
+const personalBuilder = await import(pathToFileURL(path.join(STATION_ROOT, "scripts", "build-personal.mjs")).href);
+
+describe("сборка страницы с вшитым ключом", () => {
+  const secretFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agro-key-")), "license-key.json");
+  fs.writeFileSync(
+    secretFile,
+    JSON.stringify({ keys: [{ keyId: 1, label: "тест", privateKey: PKCS8_B64, publicKey: SPKI_B64 }] }),
+    "utf8",
+  );
+
+  it("ключ сверяется с electron/license/keys.cjs и не принимается чужой", () => {
+    // Тестовый ключ с key-id=1 не совпадает с боевым publicKey из keys.cjs.
+    assert.throws(() => personalBuilder.readKeyEntry(secretFile, 1), /не совпадает/);
+    assert.throws(() => personalBuilder.readKeyEntry(secretFile, 7), /нет ключа key-id=7/);
+    assert.throws(() => personalBuilder.readKeyEntry(path.join(STATION_ROOT, "нет-такого.json"), 0), /нет файла ключа/);
+  });
+
+  it("вшивка заменяет метку и страница остаётся пригодной", () => {
+    const entry = { keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 };
+    const baked = personalBuilder.bake(builder.buildPersonal(), entry);
+    assert.ok(baked.includes("const BAKED_SECRET = "), "метка не заменена");
+    assert.ok(!baked.includes('const BAKED_SECRET = "";'), "пустая метка осталась");
+    assert.ok(baked.includes(PKCS8_B64), "ключ не вшился");
+    assert.ok(personalBuilder.stripComments(baked).length < baked.length, "зачистка не сократила файл");
+  });
+
+  it("страница с вшитым ключом выдаёт код без поля для ключа", async () => {
+    const entry = { keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 };
+    const page = personalBuilder.stripComments(personalBuilder.bake(builder.buildPersonal(), entry));
+    assert.ok(!/fetch\(|XMLHttpRequest/.test(page), "зачистка не должна менять поведение");
+    const dom = fakePage(/<script>([\s\S]*)<\/script>/.exec(page)[1]);
+    // Ключ вшит → блок ввода ключа скрыт, а под полем результата не про ключ, а
+    // предупреждение, что файл = право подписи.
+    assert.equal(dom.get("keybox").hidden, true, "блок с ключом не должен показываться");
+    assert.equal(dom.get("bakedNote").hidden, false, "про вшитый ключ надо предупредить");
+    // Открытые ключи приложения подменяем на тестовые — как это делает владелец,
+    // если ключ в проекте сменили, а страницу не пересобирают.
+    dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));
+    dom.set("src", `Код компьютера: ${PRETTY} (${MACHINE_HEX})`);
+    await dom.click("go");
+    const code = dom.get("out").value;
+    assert.match(code, /^AGRO-/, `нет кода: ${dom.get("msg").textContent}`);
+    const check = core.verifyCode({ code, keys: TEST_KEYS, machineShortId: SHORT });
+    assert.equal(check.ok, true, `ядро приложения не приняло код: ${JSON.stringify(check)}`);
+    // Повторный клик на той же странице выдаёт другой серийник, но валидный код.
+    await dom.click("go");
+    assert.notEqual(dom.get("out").value, code, "повторная выдача обязана давать новый код");
     dom.close();
   });
 });

@@ -111,6 +111,7 @@
       </section>
 
       <div class="foot">
+        <p class="tip" id="bakedNote" hidden>В этот файл вшит закрытый ключ: выписывать коды может всякий, у кого файл в руках. Держи его у себя, не пересылай и не клади в репозиторий.</p>
         <button id="keysLink" type="button" class="tiny" hidden>сменить ключ</button>
       </div>
     </main>
@@ -120,6 +121,13 @@
 
       const $ = (id) => document.getElementById(id);
       const STORE = { secret: "agro.personal.secret", keys: "agro.personal.keys", issued: "agro.personal.issued" };
+
+      /**
+       * Закрытый ключ, вшитый при сборке (`npm run license:page`): тогда страницу
+       * открываешь и сразу работаешь — поля с ключом не видно. Пустая строка —
+       * ключ вводится один раз в этом браузере (обычная страница из репозитория).
+       */
+      const BAKED_SECRET = "";
 
       const read = (key, fallback = "") => {
         try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -148,9 +156,9 @@
         }
       }
 
-      /** Закрытый ключ: JSON из secrets/license-key.json или голая base64-строка. */
+      /** Закрытый ключ: вшитый при сборке, иначе введённый в этом браузере. */
       function secret() {
-        const raw = read(STORE.secret).trim();
+        const raw = read(STORE.secret).trim() || BAKED_SECRET.trim();
         if (!raw) return null;
         try {
           const parsed = JSON.parse(raw);
@@ -171,9 +179,11 @@
 
       function renderKeyState() {
         const loaded = Boolean(secret());
+        const baked = Boolean(BAKED_SECRET.trim());
+        $("bakedNote").hidden = !baked;
         $("keybox").hidden = loaded;
         $("keysLink").hidden = false;
-        $("keysLink").textContent = loaded ? "ключ загружен — заменить" : "ключ не загружен — вставить";
+        $("keysLink").textContent = baked ? "ключ вшит в файл — заменить" : loaded ? "ключ загружен — заменить" : "ключ не загружен — вставить";
         return loaded;
       }
 

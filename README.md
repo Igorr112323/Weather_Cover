@@ -47,6 +47,7 @@
 ```bash
 npm run license:studio                        # студия: форма выдачи + журнал + отзыв
 npm run license:keygen                        # один раз: создать закрытый ключ
+npm run license:page                          # личная страница выдачи с вшитым ключом → secrets/moy-klyuch.html
 npm run license:issue -- --bind ZZG5-9ZKT     # то же из командной строки
 npm run license:verify -- "<код>"             # разобрать код
 npm run license:revoke -- <серийник>          # отозвать лицензию
@@ -127,6 +128,7 @@ Production-режим Electron: `npm run build`, затем `npm start`
 | `npm run station:standalone` | Собрать автономную страницу выдачи кодов одним файлом (`station/standalone/`) — открывается двойным щелчком, без Node |
 | `npm run license:studio` | «Студия лицензий»: локальная страница выдачи кодов с формой, журналом и отзывом (машина владельца) |
 | `npm run license:keygen` | Создать закрытый ключ лицензий (`secrets/license-key.json`) и добавить открытый в `electron/license/keys.cjs` |
+| `npm run license:page` | Собрать `secrets/moy-klyuch.html` — личную страницу выдачи кода с вшитым закрытым ключом (два поля и одна кнопка, без ввода ключа). Файл вне git: в нём право подписи |
 | `npm run license:issue` | Выписать бессрочные коды активации (`--count`, `--bind`, `--out`, `--note`) |
 | `npm run license:verify` / `license:revoke` / `license:keys` | Разобрать код, отозвать лицензию, показать ключи и отзывы |
 | `npm run dist:win` | Сборка Windows portable EXE в `release/`: правка шаблона NSIS (заставка держится до первого окна), `harden` и `electron-builder` |

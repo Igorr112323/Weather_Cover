@@ -41,7 +41,8 @@
     "station:export": "node scripts/export-station.mjs",
     "station:sync": "node station/scripts/sync-vendor.mjs",
     "dist:win": "node scripts/patch-portable-nsi.mjs && npm run harden && electron-builder --win portable",
-    "station:standalone": "node station/scripts/build-standalone.mjs"
+    "station:standalone": "node station/scripts/build-standalone.mjs",
+    "license:page": "node station/scripts/build-personal.mjs"
   },
   "dependencies": {},
   "devDependencies": {
