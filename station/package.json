@@ -16,7 +16,7 @@
     "sync:check": "node scripts/sync-vendor.mjs --check",
     "standalone": "node scripts/build-standalone.mjs",
     "standalone:check": "node scripts/build-standalone.mjs --check",
-    "test": "node --test tests/station.test.mjs tests/standalone.test.mjs"
+    "test": "node --test tests/station.test.mjs tests/standalone.test.mjs tests/personal.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {}

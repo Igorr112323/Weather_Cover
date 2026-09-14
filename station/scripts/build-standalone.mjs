@@ -8,6 +8,8 @@
  *
  *   · electron/license/core.cjs вставляется ЦЕЛИКОК (весь файл, кроме require и
  *     module.exports) — формат кода, base32, кандидаты, раскладка нагрузки;
+ *   · открытые ключи приложения (vendor/keys.cjs) вшиваются как есть, чтобы
+ *     страница сверяла выданный код с тем же списком ключей, что и EXE;
  *   · из checkmode.cjs, license-shared.mjs и request.mjs берутся отдельные
  *     объявления по именам (имена перечислены ниже);
  *   · вместо node:crypto подставляется шим: SHA-256 на чистом JS (он нужен
@@ -18,19 +20,27 @@
  * приложением.
  *
  * Запуск:
- *   node station/scripts/build-standalone.mjs           — собрать файл
- *   node station/scripts/build-standalone.mjs --check    — проверить, что файл актуален
+ *   node station/scripts/build-standalone.mjs           — собрать все страницы
+ *   node station/scripts/build-standalone.mjs --check    — проверить, что актуальны
  *
- * Выход: station/standalone/aktivaciya-klyuchey.html (готовая страница, один
- * файл, открывается двойным щелчком) и копия в station/public/, чтобы станция
- * отдавала её по ссылке /standalone/aktivaciya-klyuchey.html.
+ * Выход (см. VARIANTS):
+ *   · station/standalone/aktivaciya-klyuchey.html — полная станция выдачи и
+ *     проверки (журнал, .agrolic, сообщения покупателю), плюс копия в
+ *     station/public/, чтобы станция отдавала её по ссылке;
+ *   · station/personal/moy-klyuch.html — личная страница владельца: одно поле
+ *     ввода (заявка или код компьютера), одна кнопка, одно поле с результатом.
+ *     Ни журнала, ни вкладок: только быстро выдать код.
+ *
+ * Обе страницы собираются из одного ядра, поэтому расходиться не могут.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const STATION_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
 const PROJECT_ROOT = path.resolve(STATION_ROOT, "..");
 
 const SOURCES = {
@@ -39,6 +49,7 @@ const SOURCES = {
   shared: path.join(STATION_ROOT, "vendor", "license-shared.mjs"),
   request: path.join(STATION_ROOT, "src", "request.mjs"),
   guard: path.join(STATION_ROOT, "vendor", "guard.cjs"),
+  keys: path.join(STATION_ROOT, "vendor", "keys.cjs"),
 };
 
 const TEMPLATE = path.join(STATION_ROOT, "standalone", "template.html");
@@ -46,6 +57,16 @@ const GLUE = path.join(STATION_ROOT, "standalone", "src", "glue.js");
 const OUT = [
   path.join(STATION_ROOT, "standalone", "aktivaciya-klyuchey.html"),
   path.join(STATION_ROOT, "public", "aktivaciya-klyuchey.html"),
+];
+
+// Личная страница: те же руки, что и у станции, но без интерфейса вообще.
+const PERSONAL_TEMPLATE = path.join(STATION_ROOT, "personal", "template.html");
+const PERSONAL_OUT = [path.join(STATION_ROOT, "personal", "moy-klyuch.html")];
+
+/** Что собирать: шаблон → файлы. --check и запись проходят по этому списку. */
+const VARIANTS = [
+  { template: TEMPLATE, out: OUT },
+  { template: PERSONAL_TEMPLATE, out: PERSONAL_OUT },
 ];
 
 /** Имена, которые берутся из файла выборкой (остальное в core не нужно вырезать). */
@@ -346,6 +367,7 @@ const crypto = {
 /* ─────────────────────────────── сборка ─────────────────────────────────── */
 
 export function buildBundle({ indent = "      " } = {}) {
+  const appKeys = require(SOURCES.keys);
   const core = fs.readFileSync(SOURCES.core, "utf8");
   const { body: coreBody, names: coreNames } = wholeModuleExceptCrypto(core);
   const checkmode = pick(fs.readFileSync(SOURCES.checkmode, "utf8"), CHECKMODE_NAMES, { file: "checkmode.cjs" });
@@ -399,6 +421,11 @@ ${request}
 return { parseActivationRequest, findActivationCode };
 })();
 
+/* Открытые ключи приложения и список отзыва — точная копия vendor/keys.cjs,
+   то есть того же файла, которым EXE проверяет подпись. Страница сверяет
+   выданный код с этим списком: если вставлен не боевой ключ, код не выдаётся. */
+const AGRO_APP_KEYS = ${JSON.stringify(appKeys, null, 0).replace(/\n/g, "")};
+
 /* Обвязка браузера: подпись и проверка кода через WebCrypto Ed25519. */
 ${glue.trimEnd()}
 `;
@@ -409,26 +436,41 @@ ${glue.trimEnd()}
     .join("\n");
 }
 
-export function build() {
-  const template = fs.readFileSync(TEMPLATE, "utf8");
+/** Собрать страницу по шаблону (метка <!-- @BUNDLE@ --> → бандл ядра). */
+export function buildFor(template = TEMPLATE) {
+  const source = fs.readFileSync(template, "utf8");
   const marker = "<!-- @BUNDLE@ -->";
-  if (!template.includes(marker)) throw new Error(`в шаблоне нет метки ${marker}`);
-  return template.replace(marker, () => buildBundle());
+  if (!source.includes(marker)) throw new Error(`в шаблоне ${path.relative(PROJECT_ROOT, template)} нет метки ${marker}`);
+  return source.replace(marker, () => buildBundle());
+}
+
+export function build() {
+  return buildFor(TEMPLATE);
+}
+
+/** Личная страница владельца (поле → кнопка → код). */
+export function buildPersonal() {
+  return buildFor(PERSONAL_TEMPLATE);
+}
+
+/** Все страницы для записи и для --check: [{ file, output }]. */
+export function buildAll() {
+  return VARIANTS.flatMap((variant) => variant.out.map((file) => ({ file, output: buildFor(variant.template) })));
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const check = process.argv.includes("--check");
-  const output = build();
+  const pages = buildAll();
   if (check) {
-    const stale = OUT.filter((file) => !fs.existsSync(file) || fs.readFileSync(file, "utf8") !== output);
+    const stale = pages.filter(({ file, output }) => !fs.existsSync(file) || fs.readFileSync(file, "utf8") !== output);
     if (stale.length) {
-      console.error(`Автономная страница устарела: ${stale.map((file) => path.relative(PROJECT_ROOT, file)).join(", ")}\nПересоберите: npm run station:standalone`);
+      console.error(`Страницы устарели: ${stale.map(({ file }) => path.relative(PROJECT_ROOT, file)).join(", ")}\nПересоберите: npm run station:standalone`);
       process.exit(1);
     }
-    console.log("✔ автономная страница актуальна (совпадает со сборкой из исходников)");
+    console.log("✔ автономные страницы актуальны (совпадают со сборкой из исходников)");
   } else {
-    for (const file of OUT) {
+    for (const { file, output } of pages) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, output, "utf8");
       console.log(`собрано: ${path.relative(PROJECT_ROOT, file)} (${(Buffer.byteLength(output) / 1024).toFixed(0)} КБ)`);

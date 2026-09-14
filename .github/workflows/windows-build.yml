@@ -70,6 +70,20 @@ jobs:
             exit 1
           fi
 
+      # Обе автономные страницы (станция выдачи и личная страница кодов) собираются
+      # из кода приложения: устаревший файл = покупатель получил бы код, который
+      # EXE не примет. Поэтому проверка актуальности и тесты — до сборки релиза.
+      - name: Автономные страницы (станция и личная)
+        run: |
+          set -o pipefail
+          node station/scripts/sync-vendor.mjs --check --repo .
+          node station/scripts/build-standalone.mjs --check
+          if ! node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs 2>&1 | tee ci-logs/station.log; then
+            echo "===== ПАДАЮЩИЕ ТЕСТЫ СТРАНИЦ (выжимка) ====="
+            grep -E "^ *not ok|error: |AssertionError" ci-logs/station.log | tail -40
+            exit 1
+          fi
+
       - name: Сборка renderer
         run: |
           set -o pipefail

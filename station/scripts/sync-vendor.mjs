@@ -45,6 +45,10 @@ const COPIES = [
   { from: "electron/license/checkmode.cjs", to: "vendor/checkmode.cjs" },
   // guard.cjs станции не исполняет: из него берётся текст подсказок REJECT_MESSAGES
   { from: "electron/license/guard.cjs", to: "vendor/guard.cjs" },
+  // открытые ключи приложения: единственная доверенная точка проверки подписи.
+  // Нужна, чтобы автономная и личная страницы сверяли выданный код с тем же
+  // списком ключей, что и EXE, а не с копией списка, вписанной руками.
+  { from: "electron/license/keys.cjs", to: "vendor/keys.cjs" },
   { from: "scripts/license-shared.mjs", to: "vendor/license-shared.mjs", patches: IMPORT_PATCHES },
   { from: "scripts/activation-doctor-lib.mjs", to: "vendor/activation-doctor-lib.mjs", patches: IMPORT_PATCHES },
 ];

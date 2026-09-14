@@ -1234,6 +1234,11 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
       return { parseActivationRequest, findActivationCode };
       })();
 
+      /* Открытые ключи приложения и список отзыва — точная копия vendor/keys.cjs,
+         то есть того же файла, которым EXE проверяет подпись. Страница сверяет
+         выданный код с этим списком: если вставлен не боевой ключ, код не выдаётся. */
+      const AGRO_APP_KEYS = {"keys":[{"keyId":1,"label":"production","publicKey":"MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw="}],"revokedSerials":["dd765aac5612aeb9"]};
+
       /* Обвязка браузера: подпись и проверка кода через WebCrypto Ed25519. */
       /* ── браузерная обвязка ─────────────────────────────────────────────────────
        * Подпись кода и проверка подписи идут через WebCrypto (Ed25519), поэтому они
@@ -1690,11 +1695,11 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
           ledger: "agro.station.ledger",
           exeUrl: "agro.station.exeUrl",
         };
-        // Открытый ключ из проекта (electron/license/keys.cjs) — публичный, его можно вшить.
-        const DEFAULT_PUBLIC = {
-          keys: [{ keyId: 1, label: "production", publicKey: "MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw=" }],
-          revokedSerials: ["dd765aac5612aeb9"],
-        };
+        // Открытые ключи приложения вшивает сборщик — это копия
+        // electron/license/keys.cjs, тот же список, которым EXE проверяет подпись.
+        // Отдельной копии здесь нет, чтобы она не могла устареть: после смены
+        // ключа в проекте достаточно npm run station:standalone.
+        const DEFAULT_PUBLIC = AGRO_APP_KEYS;
         const DEFAULT_EXE_URL = "https://github.com/Igorr112323/Weather_Cover/releases/download/v0.3.4/AgroPrognoz-0.3.4-portable.exe";
         const RESET_COMMAND = 'move "%APPDATA%\\AgroPrognoz\\agroprognoz.license" "%APPDATA%\\AgroPrognoz\\agroprognoz.license.bak"';
 

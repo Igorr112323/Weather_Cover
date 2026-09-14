@@ -37,7 +37,7 @@
     "license:reset": "node scripts/activation-doctor.mjs reset",
     "activation:selftest": "node scripts/activation-doctor.mjs selftest",
     "station": "node station/src/main.mjs",
-    "station:test": "node --test station/tests/station.test.mjs station/tests/standalone.test.mjs",
+    "station:test": "node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs",
     "station:export": "node scripts/export-station.mjs",
     "station:sync": "node station/scripts/sync-vendor.mjs",
     "dist:win": "node scripts/patch-portable-nsi.mjs && npm run harden && electron-builder --win portable",

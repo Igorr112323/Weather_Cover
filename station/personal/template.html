@@ -1,0 +1,322 @@
+<!doctype html>
+<!--
+  Личная страница выдачи кода активации. Один экран: вставил заявку (или код
+  компьютера) → нажал «Получить код активации» → код во втором поле.
+
+  ПРАВИТЬ РУКАМИ ЗДЕСЬ НЕЛЬЗЯ — это шаблон. Файл moy-klyuch.html собирается
+  скриптом station/scripts/build-standalone.mjs, который вшивает в отметку
+  @BUNDLE@ ядро приложения дословно (electron/license/core.cjs через vendor/),
+  поэтому код страницы принимает EXE. Правьте исходники проекта и пересобирайте:
+
+      npm run station:standalone
+
+  Страница работает офлайн: ни одного сетевого запроса, закрытый ключ хранится
+  только в localStorage этого браузера. Файл с ключом внутри — это разрешение
+  выписывать коды, никому его не пересылайте.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Код активации — моё</title>
+    <style>
+      :root {
+        --bg: #f4f7f4;
+        --surface: #fff;
+        --line: #dfe7e1;
+        --text: #18271e;
+        --muted: #68776d;
+        --green: #16834a;
+        --danger: #b93838;
+        --danger-bg: #fff1f1;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px 16px 40px;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.45 system-ui, "Segoe UI", Roboto, sans-serif;
+        display: flex;
+        justify-content: center;
+      }
+      .card {
+        width: 100%;
+        max-width: 620px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 22px 22px 20px;
+      }
+      h1 { margin: 0 0 18px; font-size: 19px; font-weight: 650; }
+      .lbl { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 6px; }
+      textarea {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        resize: vertical;
+      }
+      textarea:focus-visible { outline: 2px solid rgba(22, 131, 74, 0.35); outline-offset: 1px; }
+      #out { background: #f8faf8; cursor: text; font-size: 14px; letter-spacing: 0.04em; }
+      button {
+        font: inherit;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 10px 16px;
+        cursor: pointer;
+        background: var(--green);
+        color: #fff;
+      }
+      button:hover { filter: brightness(0.94); }
+      button[disabled] { opacity: 0.6; cursor: progress; }
+      .row { display: flex; gap: 10px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
+      .row button { flex: 1 1 auto; min-width: 220px; }
+      .tiny { background: transparent; color: var(--muted); border-color: var(--line); min-width: 0 !important; flex: 0 0 auto !important; padding: 7px 12px; font-size: 13px; }
+      .msg { font-size: 12.5px; color: var(--muted); min-height: 18px; margin: 0; }
+      .msg--bad { color: var(--danger); }
+      .keybox { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+      .tip { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+      .foot { margin-top: 14px; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Код активации</h1>
+
+      <label class="lbl" for="src">Что прислал покупатель: заявка, сообщение в мессенджере или просто код компьютера</label>
+      <textarea id="src" rows="4" spellcheck="false" placeholder="S5HX-XRMK (1c722cc7bfe23bfae5f2ba334bc6c420d76caed935cb65ff71b4d9c1f0e8bc78)"></textarea>
+
+      <div class="row">
+        <button id="go" type="button">Получить код активации</button>
+      </div>
+
+      <label class="lbl" for="out">Ключ активации — по этому компьютеру, бессрочно</label>
+      <textarea id="out" rows="3" readonly spellcheck="false"></textarea>
+
+      <p class="msg" id="msg"></p>
+
+      <section class="keybox" id="keybox" hidden>
+        <label class="lbl" for="key">Закрытый ключ приложения — содержимое secrets/license-key.json или одна строка MC4CAQAw… (нужен один раз)</label>
+        <textarea id="key" rows="3" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="saveKey" type="button">Сохранить на этом ПК</button>
+          <button id="clearKey" type="button" class="tiny">Забыть</button>
+        </div>
+        <p class="tip">Ключ остаётся в этом браузере и никуда не отправляется — страница не делает ни одного запроса в сеть. Файл с этим ключом позволяет выписывать коды: не пересылайте его и не выкладывайте в репозиторий.</p>
+      </section>
+
+      <div class="foot">
+        <button id="keysLink" type="button" class="tiny" hidden>сменить ключ</button>
+      </div>
+    </main>
+
+    <script>
+      <!-- @BUNDLE@ -->
+
+      const $ = (id) => document.getElementById(id);
+      const STORE = { secret: "agro.personal.secret", keys: "agro.personal.keys", issued: "agro.personal.issued" };
+
+      const read = (key, fallback = "") => {
+        try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+      };
+      const write = (key, value) => {
+        try { localStorage.setItem(key, value); return true; } catch { return false; }
+      };
+      const forget = (key) => { try { localStorage.removeItem(key); } catch { /* нет localStorage — живём без него */ } };
+
+      /**
+       * Открытые ключи приложения. По умолчанию — те, что вшиты при сборке
+       * (копия electron/license/keys.cjs). Переопределяются только через
+       * localStorage: если ключ в проекте сменили, а страницу не пересобирали.
+       */
+      function publicConfig() {
+        const raw = read(STORE.keys).trim();
+        if (!raw) return AGRO_APP_KEYS;
+        try {
+          const parsed = JSON.parse(raw);
+          return {
+            keys: Array.isArray(parsed?.keys) ? parsed.keys : [],
+            revokedSerials: Array.isArray(parsed?.revokedSerials) ? parsed.revokedSerials : [],
+          };
+        } catch {
+          return AGRO_APP_KEYS;
+        }
+      }
+
+      /** Закрытый ключ: JSON из secrets/license-key.json или голая base64-строка. */
+      function secret() {
+        const raw = read(STORE.secret).trim();
+        if (!raw) return null;
+        try {
+          const parsed = JSON.parse(raw);
+          const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
+          const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
+          if (found.length) {
+            const last = found[found.length - 1];
+            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "" };
+          }
+        } catch { /* не JSON — значит вставили base64 */ }
+        return /^[A-Za-z0-9+/=]{60,}$/.test(raw) ? { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "" } : null;
+      }
+
+      function note(text, bad = false) {
+        $("msg").textContent = text;
+        $("msg").className = bad ? "msg msg--bad" : "msg";
+      }
+
+      function renderKeyState() {
+        const loaded = Boolean(secret());
+        $("keybox").hidden = loaded;
+        $("keysLink").hidden = false;
+        $("keysLink").textContent = loaded ? "ключ загружен — заменить" : "ключ не загружен — вставить";
+        return loaded;
+      }
+
+      function issuedHistory() {
+        try {
+          const parsed = JSON.parse(read(STORE.issued, "[]"));
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      async function issue() {
+        if (!renderKeyState()) {
+          note("Сначала вставьте закрытый ключ — поле ниже.", true);
+          $("key").focus();
+          return;
+        }
+        if (!AGRO.ed25519Supported()) {
+          note("Браузер не умеет Ed25519. Нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+.", true);
+          return;
+        }
+        const text = $("src").value.trim();
+        if (!text) {
+          note("Вставьте текст покупателя или код компьютера.", true);
+          $("src").focus();
+          return;
+        }
+
+        // Заявка — разбором покупателя (тот же код, что на сервере станции);
+        // если это просто «XXXX-XXXX» или hex — берём напрямую из resolveBindTarget.
+        let target = await AGRO.parseRequest(text);
+        if (!target?.ok) target = await AGRO.resolveMachine(text);
+        if (!target?.ok) {
+          $("out").value = "";
+          note(`${target?.message ?? "Не нашёл код компьютера."} Вставьте строку вида «S5HX-XRMK (полный-id)» или сообщение покупателя целиком.`, true);
+          return;
+        }
+        const shortId = target.shortId ?? target;
+        const pretty = target.pretty || AGRO.prettyShortId(shortId);
+        const keys = secret();
+        const config = publicConfig();
+
+        note("Подписываю…");
+        $("go").disabled = true;
+        let issued = null;
+        let failure = "";
+        try {
+          issued = await AGRO.issueCode({
+            privateKeyBase64: keys.privateKeyBase64,
+            publicKeyBase64: keys.publicKey,
+            keys: config.keys,
+            keyId: keys.keyId,
+            bound: true,
+            shortId,
+          });
+        } catch (error) {
+          failure = String(error?.message ?? error);
+        } finally {
+          $("go").disabled = false;
+        }
+        if (!issued) {
+          note(`Не получилось подписать: ${failure}`, true);
+          return;
+        }
+
+        // Проверка обязательна: код должен проходить тем же списком ключей,
+        // которым его проверяет EXE. Не прошёл — значит ключ не боевой.
+        const check = await AGRO.verifyCode({
+          code: issued.code,
+          keys: config.keys,
+          machineShortId: shortId,
+          revokedSerials: config.revokedSerials,
+        });
+        if (!check.ok) {
+          $("out").value = "";
+          note(`Код не принят ключом приложения (${check.message ?? check.reason}). Похоже, вставлен закрытый ключ от другого набора — в приложении другой открытый ключ.`, true);
+          return;
+        }
+
+        $("out").value = issued.code;
+        const before = issuedHistory().filter((row) => row.shortId === shortId && row.serial !== issued.serialHex);
+        write(STORE.issued, JSON.stringify([...issuedHistory(), { at: AGRO.stamp(), shortId, serial: issued.serialHex }].slice(-400)));
+        note(
+          `Код для компьютера ${pretty} · серийник ${issued.serialHex}` +
+            (before.length
+              ? ` · у этого компьютера уже был выдан код (${before.map((row) => row.serial).join(", ")}) — прежний сам не отзывается, отзывается только списком отзыва при пересборке`
+              : " · нажмите на поле с кодом, чтобы скопировать"),
+          false,
+        );
+      }
+
+      // Обработчик возвращает промис: так его дожидается и тест на фиктивном
+      // DOM (иначе проверка «нажал — получил код» ловит промежуточное состояние).
+      $("go").addEventListener("click", () => issue());
+      $("src").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          return issue();
+        }
+        return undefined;
+      });
+      $("saveKey").addEventListener("click", () => {
+        const raw = $("key").value.trim();
+        if (!raw) {
+          note("Поле с ключом пустое.", true);
+          return;
+        }
+        write(STORE.secret, raw);
+        if (!secret()) {
+          forget(STORE.secret);
+          note("Не похоже на ключ: нужен JSON из secrets/license-key.json или строка MC4CAQAw…", true);
+          return;
+        }
+        $("key").value = "";
+        renderKeyState();
+        note("Ключ сохранён в этом браузере.");
+        $("src").focus();
+      });
+      $("clearKey").addEventListener("click", () => {
+        forget(STORE.secret);
+        renderKeyState();
+        note("Ключ забыт.");
+      });
+      $("keysLink").addEventListener("click", () => {
+        $("keybox").hidden = !$("keybox").hidden;
+        if (!$("keybox").hidden) $("key").focus();
+      });
+      // Клик по полю с кодом = копирование (лишней кнопки на экране нет).
+      $("out").addEventListener("click", async () => {
+        const value = $("out").value.trim();
+        if (!value) return;
+        try {
+          await navigator.clipboard.writeText(value);
+          note("Код скопирован.");
+        } catch {
+          $("out").select();
+          note("Код выделен — нажмите Ctrl+C.");
+        }
+      });
+
+      if (!renderKeyState()) note("Вставьте закрытый ключ — он нужен один раз и остаётся в этом браузере.");
+      else $("src").focus();
+    </script>
+  </body>
+</html>

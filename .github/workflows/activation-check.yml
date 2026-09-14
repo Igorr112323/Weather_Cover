@@ -70,7 +70,7 @@ jobs:
         run: |
           node station/scripts/sync-vendor.mjs --check --repo .
           node station/scripts/build-standalone.mjs --check
-          node --test station/tests/station.test.mjs station/tests/standalone.test.mjs
+          node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs
 
       - name: Сборка renderer
         run: npm run build
