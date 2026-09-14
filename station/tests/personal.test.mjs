@@ -283,35 +283,56 @@ describe("сборка страницы с вшитым ключом", () => {
     dom.close();
   });
 
-  it("браузер без Ed25519 объясняет причину, а не молчит", async () => {
+  it("браузер без Ed25519 в WebCrypto всё равно выдаёт код", async () => {
     // Реальная жалоба: на старом Chromium (Яндекс.Браузер) WebCrypto не знает
-    // алгоритм Ed25519, DOMException приходит с ПУСТЫМ сообщением, и страница
-    // печатала «Не получилось подписать: » без причины.
-    const broken = {
-      subtle: {
-        importKey: async () => {
-          throw Object.assign(new Error(""), { name: "NotSupportedError" });
-        },
-        sign: async () => {
-          throw Object.assign(new Error(""), { name: "NotSupportedError" });
-        },
-        generateKey: async () => {
-          throw Object.assign(new Error(""), { name: "NotSupportedError" });
-        },
-      },
-      getRandomValues: (array) => array,
+    // алгоритм Ed25519 и бросает DOMException с ПУСТЫМ сообщением — страница
+    // печатала «Не получилось подписать: » без причины. Теперь подпись ставит
+    // встроенный в страницу код, и выдача не зависит от браузера.
+    const broken = async () => {
+      throw Object.assign(new Error(""), { name: "NotSupportedError" });
     };
-
-    const dom = fakePage(PAGE_SCRIPT(), { crypto: broken });
+    const dom = fakePage(PAGE_SCRIPT(), {
+      crypto: { subtle: { importKey: broken, sign: broken, verify: broken, generateKey: broken }, getRandomValues: (array) => array },
+    });
+    dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));
     dom.set("key", PKCS8_B64);
     await dom.click("saveKey");
     dom.set("src", PRETTY);
     await dom.click("go");
 
+    const code = dom.get("out").value;
+    assert.match(code, /^AGRO-/, `без браузерной подписи код не выдан: ${dom.get("msg").textContent}`);
+    const check = core.verifyCode({ code, keys: TEST_KEYS, machineShortId: SHORT });
+    assert.equal(check.ok, true, `приложение не приняло код, подписанный встроенным кодом: ${JSON.stringify(check)}`);
+    dom.close();
+  });
+
+  it("браузер вовсе без WebCrypto тоже выдаёт код", async () => {
+    // Полностью отключаем subtle: страница обязана подписать встроенным кодом,
+    // а не упасть на пустом месте (именно так и было в старых Chromium).
+    const dom = fakePage(PAGE_SCRIPT(), { crypto: { getRandomValues: (array) => array } });
+    dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));
+    dom.set("key", JSON.stringify({ keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 }));
+    await dom.click("saveKey");
+    dom.set("src", PRETTY);
+    await dom.click("go");
+
+    const code = dom.get("out").value;
+    assert.match(code, /^AGRO-/, `без subtle код не выдан: ${dom.get("msg").textContent}`);
+    const check = core.verifyCode({ code, keys: TEST_KEYS, machineShortId: SHORT });
+    assert.equal(check.ok, true, `приложение не приняло код: ${JSON.stringify(check)}`);
+    dom.close();
+  });
+
+  it("совсем древний браузер (без BigInt) получает объяснение, а не пустоту", async () => {
+    const dom = fakePage(PAGE_SCRIPT(), { BigInt: undefined });
+    dom.set("key", PKCS8_B64);
+    await dom.click("saveKey");
+    dom.set("src", PRETTY);
+    await dom.click("go");
     const msg = dom.get("msg").textContent;
-    assert.equal(dom.get("out").value, "", "без подписи кода быть не должно");
-    assert.match(msg, /Ed25519/, `нет слова про Ed25519: ${msg}`);
-    assert.match(msg, /137/, "не названа версия браузера, с которой всё работает");
+    assert.equal(dom.get("out").value, "", "без BigInt подписи быть не должно");
+    assert.match(msg, /BigInt/, `нет слова про BigInt: ${msg}`);
     assert.match(msg, /license:studio/, "не предложена выдача на Node");
     assert.ok(!/:\s*$/.test(msg), `сообщение обрывается: ${msg}`);
     dom.close();

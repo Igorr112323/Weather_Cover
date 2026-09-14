@@ -63,12 +63,12 @@ const AGRO = (() => {
   }
 
   /**
-   * Поддержка ли алгоритм — этим проверяем наличие функций, но его в браузере
-   * может не быть: Ed25519 в WebCrypto появился в Chrome/Edge только в 137
-   * (май 2025), в Firefox — в 130, в Safari — в 17. Браузеры на старом Chromium
-   * (Яндекс, старые Opera/QQ) отдают функции, а на подписи падают DOMException
-   * с ПУСТЫМ сообщением — пользователь видит «не получилось», и непонятно почему.
-   * Поэтому отдельная проверка: просим браузер сгенерировать ключ Ed25519.
+   * Поддержку алгоритма наличием функций не проверить: Ed25519 в WebCrypto
+   * появился в Chrome/Edge только в 137 (май 2025), в Firefox — в 130, в Safari —
+   * в 17. Браузеры на старом Chromium (Яндекс, старые Opera) функции отдают, а на
+   * подписе бросают DOMException с ПУСТЫМ сообщением. Поэтому спрашиваем браузер
+   * делом: просим сгенерировать ключ. Не умеет — подписывает встроенный JS, и код
+   * всё равно выходит тем же (побайтовая сверка — в station/tests/ed25519.test.mjs).
    */
   let ed25519Probe = null;
 
@@ -83,6 +83,11 @@ const AGRO = (() => {
       }
     }
     return ed25519Probe;
+  }
+
+  /** Чем в итоге подписали: «webcrypto» или «js» — для отладки и для станции. */
+  async function signingMode() {
+    return (await ed25519Available()) ? "webcrypto" : "js";
   }
 
   /** Человекочитаемая причина провала подписи (у DOMException часто пусто). */
@@ -119,7 +124,6 @@ const AGRO = (() => {
    * ключ — тот самый», даже когда PKCS#8 открытого ключа не содержит.
    */
   async function matchKey({ privateKeyBase64, keys = [] } = {}) {
-    if (!ed25519Supported()) return { ok: false, message: "Браузер не поддерживает Ed25519." };
     let seed;
     let embedded;
     try {
@@ -128,18 +132,15 @@ const AGRO = (() => {
       return { ok: false, message: error?.message ?? "Закрытый ключ не читается." };
     }
     const challenge = new Uint8Array(32).map((_, index) => (index * 7 + 11) & 0xff);
+    const signature = await signWithSeed(seed, embedded ?? AGRO_ED25519.publicKeyFromSeed(seed), challenge);
     for (const entry of keys) {
+      let accepted = false;
       try {
-        const x = base64UrlFromBytes(embedded ?? rawPublicFromSpki(entry.publicKey));
-        const signingKey = await subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x, d: base64UrlFromBytes(seed) }, { name: "Ed25519" }, false, ["sign"]);
-        const verifyKey = await importVerifyKey(entry.publicKey);
-        const signature = await subtle.sign({ name: "Ed25519" }, signingKey, challenge);
-        if ((await subtle.verify({ name: "Ed25519" }, verifyKey, signature, challenge)) === true) {
-          return { ok: true, keyId: Number(entry.keyId) || 1, label: String(entry.label ?? "") };
-        }
+        accepted = await verifyWithRaw(rawPublicFromSpki(entry.publicKey), signature, challenge);
       } catch {
-        /* этот ключ не подошёл — пробуем следующий */
+        accepted = false;
       }
+      if (accepted) return { ok: true, keyId: Number(entry.keyId) || 1, label: String(entry.label ?? "") };
     }
     return { ok: false, message: "Закрытый ключ не соответствует ни одному открытому ключу приложения." };
   }
@@ -163,17 +164,46 @@ const AGRO = (() => {
     throw new Error("Открытый ключ должен быть SPKI Ed25519 (44 байта) или голым ключом (32 байта).");
   }
 
-  async function importSigningKey(privateKeyBase64, publicKeyBase64 = "") {
-    if (!ed25519Supported()) throw new Error("Браузер не поддерживает Ed25519 в WebCrypto.");
-    const { seed, publicKey } = readPkcs8(privateKeyBase64);
-    const x = publicKey ? base64UrlFromBytes(publicKey) : publicKeyBase64 ? base64UrlFromBytes(rawPublicFromSpki(publicKeyBase64)) : "";
-    if (!x) throw new Error("Нечем подписать: у закрытого ключа нет открытого — вставьте keys.cjs/JSON с publicKey или добавьте ключ в приложение.");
-    return subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x, d: base64UrlFromBytes(seed) }, { name: "Ed25519" }, false, ["sign"]);
+  /** 32 байта открытого ключа: из PKCS#8 → из SPKI → восстановленный из seed. */
+  function publicKeyBytesFor(privateKeyBase64, publicKeyBase64 = "") {
+    const { seed, publicKey: embedded } = readPkcs8(privateKeyBase64);
+    if (embedded) return { seed, publicKey: embedded };
+    if (publicKeyBase64) return { seed, publicKey: rawPublicFromSpki(publicKeyBase64) };
+    // Открытого ключа в PKCS#8 нет — восстанавливаем из seed. Подписать можно и
+    // так, а список ключей приложения результат всё равно проверит ниже.
+    return { seed, publicKey: AGRO_ED25519.publicKeyFromSeed(seed) };
   }
 
-  async function importVerifyKey(spkiBase64) {
-    if (!ed25519Supported()) throw new Error("Браузер не поддерживает Ed25519 в WebCrypto.");
-    return subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(rawPublicFromSpki(spkiBase64)) }, { name: "Ed25519" }, true, ["verify"]);
+  /** Подпись: сначала браузер, при его отказе — встроенный JS. */
+  async function signWithSeed(seed, publicKeyBytes, message) {
+    if (await ed25519Available()) {
+      try {
+        const key = await subtle.importKey(
+          "jwk",
+          { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(publicKeyBytes), d: base64UrlFromBytes(seed) },
+          { name: "Ed25519" },
+          false,
+          ["sign"],
+        );
+        return new Uint8Array(await subtle.sign({ name: "Ed25519" }, key, message));
+      } catch {
+        /* браузер передумал — подписываем сами, пользователь не виноват */
+      }
+    }
+    return AGRO_ED25519.sign(seed, message);
+  }
+
+  /** Проверка подписи — тем же способом, что и подпись. */
+  async function verifyWithRaw(rawPublicKey, signature, message) {
+    if (await ed25519Available()) {
+      try {
+        const key = await subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(rawPublicKey) }, { name: "Ed25519" }, true, ["verify"]);
+        return (await subtle.verify({ name: "Ed25519" }, key, signature, message)) === true;
+      } catch {
+        return AGRO_ED25519.verify(rawPublicKey, signature, message);
+      }
+    }
+    return AGRO_ED25519.verify(rawPublicKey, signature, message);
   }
 
   /**
@@ -222,9 +252,8 @@ const AGRO = (() => {
     const payload = bound
       ? AGRO_L.bindPayload({ keyId, shortId: cleanShort, serial: serialBytes })
       : core.buildPayload({ keyId, serial: serialBytes, bound: false });
-    const { publicKey: embedded } = readPkcs8(privateKeyBase64);
-    const signingKey = await importSigningKey(privateKeyBase64, publicKeyFor({ publicKeyBase64, embedded, keys, keyId }));
-    const signature = new Uint8Array(await subtle.sign({ name: "Ed25519" }, signingKey, payload));
+    const { seed, publicKey: publicKeyBytes } = publicKeyBytesFor(privateKeyBase64, publicKeyFor({ publicKeyBase64, keys, keyId }));
+    const signature = await signWithSeed(seed, publicKeyBytes, payload);
     const bytes = new Uint8Array(core.LICENSE_LENGTH);
     bytes.set(payload, 0);
     bytes.set(signature, core.PAYLOAD_LENGTH);
@@ -249,7 +278,7 @@ const AGRO = (() => {
     const publicKeys = [];
     for (const entry of entries) {
       try {
-        publicKeys.push({ entry, key: await importVerifyKey(entry.publicKey) });
+        publicKeys.push({ entry, raw: rawPublicFromSpki(entry.publicKey) });
       } catch {
         /* ключ не читается — как в приложении: его просто нет в списке */
       }
@@ -302,9 +331,9 @@ const AGRO = (() => {
 
       let signed = false;
       let matchedKeyId = license.keyId;
-      for (const { entry, key } of ordered) {
+      for (const { entry, raw } of ordered) {
         try {
-          signed = (await subtle.verify({ name: "Ed25519" }, key, signature, payload)) === true;
+          signed = await verifyWithRaw(raw, signature, payload);
         } catch {
           signed = false;
         }
@@ -456,10 +485,13 @@ const AGRO = (() => {
     // разбор заявки
     parseRequest,
     resolveMachine,
-    // криптография браузера
+    // криптография браузера (и встроенный запасной путь)
     ed25519Supported,
     ed25519Available,
+    signingMode,
     signErrorText,
+    signWithSeed,
+    verifyWithRaw,
     publicFromPrivate,
     matchKey,
     issueCode,

@@ -388,7 +388,7 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
             keyNote = proof.ok ? `подходит к key-id=${proof.keyId}` : proof.message;
           }
           $("chips").innerHTML = [
-            [AGRO.ed25519Supported(), "криптография браузера", "доступна (Ed25519)"],
+            [true, "подпись кода", (await AGRO.signingMode()) === "webcrypto" ? "браузер (WebCrypto Ed25519)" : "встроенный в страницу Ed25519"],
             [Boolean(secret), "закрытый ключ", `${keyNote}`],
             [keys.keys.length > 0, "открытый ключ", `${keys.keys.map((entry) => `key-id=${entry.keyId}`).join(", ")} · отзывов ${keys.revokedSerials.length}`],
             [true, "журнал", `${ledgerRows().length} записей`],
@@ -478,8 +478,8 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
             $("issueHint").textContent = "";
             return;
           }
-          if (!AGRO.ed25519Supported()) {
-            box($("result"), `<h3>Браузер не поддерживает Ed25519</h3><p>Нужен свежий Chrome/Edge (137+), Firefox 130+ или Safari 17+. Либо запустите локальную станцию из проекта: <span class="mono">npm run station</span> — она подписывает тем же кодом на Node.</p>`, true);
+          if (typeof BigInt !== "function") {
+            box($("result"), `<h3>Браузер слишком старый</h3><p>Подписи кода нужен BigInt — он есть в Chrome 67+, Firefox 68+, Safari 14+ (2019−2020 год). Или выдавайте код из проекта: <span class="mono">npm run station</span> — там подпись считает Node.</p>`, true);
             $("issueHint").textContent = "";
             return;
           }

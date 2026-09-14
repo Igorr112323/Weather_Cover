@@ -192,14 +192,17 @@
       }
 
       const CRYPTO_HINT =
-        "Этот браузер не умеет подписывать Ed25519 средствами WebCrypto: " +
-        "алгоритм появился в Chrome и Edge только в версии 137, в Firefox — 130, в Safari — 17. " +
-        "На Яндекс.Браузере и других старых Chromium подписи нет. Откройте страницу в свежем " +
-        "Chrome/Edge/Firefox — или выдавайте коды без браузера: npm run license:studio";
+        "Браузер слишком старый: в нём нет BigInt — он нужен для подписи кода. " +
+        "Откройте страницу в браузере не старше 2019 года (Chrome, Edge, Firefox, Safari) " +
+        "или выдавайте коды без браузера: npm run license:studio";
 
-      /** Проверяет поддержку алгоритма (не наличие функций!) и объясняет отказ. */
-      async function cryptoCheck() {
-        if (await AGRO.ed25519Available()) return true;
+      /**
+       * Подпись ставит браузер (WebCrypto Ed25519), а если браузер её не умеет —
+       * встроенный в страницу код: он даёт побайтово тот же результат. Поэтому
+       * требование к браузеру одно — работать BigInt.
+       */
+      function cryptoCheck() {
+        if (typeof BigInt === "function") return true;
         note(CRYPTO_HINT, true);
         return false;
       }
@@ -239,7 +242,7 @@
           note(`Ключ не подходит: ${entry.problem}. Нужен файл license-key.json целиком или строка privateKey из него (64 символа, начинается с MC4CAQAw).`, true);
           return;
         }
-        if (!(await cryptoCheck())) return;
+        if (!cryptoCheck()) return;
         const text = $("src").value.trim();
         if (!text) {
           note("Вставьте текст покупателя или код компьютера.", true);
@@ -300,7 +303,7 @@
           $("go").disabled = false;
         }
         if (!issued) {
-          note(`Не получилось подписать: ${failure}${/Ed25519|WebCrypto/i.test(failure) ? "" : " (если браузер старый — см. подсказку про Ed25519)"}`, true);
+          note(`Не получилось подписать: ${failure}`, true);
           return;
         }
 
@@ -322,7 +325,7 @@
         const before = issuedHistory().filter((row) => row.shortId === shortId && row.serial !== issued.serialHex);
         write(STORE.issued, JSON.stringify([...issuedHistory(), { at: AGRO.stamp(), shortId, serial: issued.serialHex }].slice(-400)));
         note(
-          `Код для компьютера ${pretty} · серийник ${issued.serialHex}` +
+          `Код для компьютера ${pretty} · серийник ${issued.serialHex} · ключ key-id=${issued.keyId}` +
             (before.length
               ? ` · у этого компьютера уже был выдан код (${before.map((row) => row.serial).join(", ")}) — прежний сам не отзывается, отзывается только списком отзыва при пересборке`
               : " · нажмите на поле с кодом, чтобы скопировать"),

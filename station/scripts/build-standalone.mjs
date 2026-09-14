@@ -54,6 +54,8 @@ const SOURCES = {
 
 const TEMPLATE = path.join(STATION_ROOT, "standalone", "template.html");
 const GLUE = path.join(STATION_ROOT, "standalone", "src", "glue.js");
+// Встроенный Ed25519: им подписываем, если браузер его не умеет (старые Chromium).
+const ED25519 = path.join(STATION_ROOT, "standalone", "src", "ed25519.cjs");
 const OUT = [
   path.join(STATION_ROOT, "standalone", "aktivaciya-klyuchey.html"),
   path.join(STATION_ROOT, "public", "aktivaciya-klyuchey.html"),
@@ -374,7 +376,12 @@ export function buildBundle({ indent = "      " } = {}) {
   const shared = pick(fs.readFileSync(SOURCES.shared, "utf8"), SHARED_NAMES, { file: "license-shared.mjs" });
   const request = pick(fs.readFileSync(SOURCES.request, "utf8"), REQUEST_NAMES, { file: "request.mjs" });
   const guard = pick(fs.readFileSync(SOURCES.guard, "utf8"), GUARD_NAMES, { file: "guard.cjs" });
-  const glue = fs.readFileSync(GLUE, "utf8");
+  const glue = fs
+    .readFileSync(GLUE, "utf8")
+    .replace(
+      "  const core = AGRO_CORE;",
+      `  const core = AGRO_CORE;\n\n${fs.readFileSync(ED25519, "utf8").replace(/^\/\*[\s\S]*?\*\/\n/, "").replace(/if \(typeof module[^\n]*\n/, "")}`,
+    );
 
   const block = `/**
  * ══════════════════════════════════════════════════════════════════════════

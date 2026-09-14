@@ -1100,6 +1100,311 @@
        */
       const AGRO = (() => {
         const core = AGRO_CORE;
+
+      const AGRO_ED25519 = (() => {
+        const P = (1n << 255n) - 19n;
+        /** Порядок базовой точки: L = 2^252 + 27742317777372353535851937790883648493. */
+        const L = (1n << 252n) + 27742317777372353535851937790883648493n;
+        const MASK64 = (1n << 64n) - 1n;
+
+        function mod(value, m = P) {
+          const rest = value % m;
+          return rest < 0n ? rest + m : rest;
+        }
+
+        function pow(base, exponent, m) {
+          let result = 1n;
+          let power = mod(base, m);
+          let e = exponent;
+          while (e > 0n) {
+            if (e & 1n) result = result * power % m;
+            power = power * power % m;
+            e >>= 1n;
+          }
+          return result;
+        }
+
+        const inv = (value) => pow(value, P - 2n, P);
+
+        /* ── целочисленные корни (нужны только для таблиц SHA-512) ──────────────── */
+
+        function isqrt(n) {
+          if (n < 2n) return n;
+          let x = 1n << BigInt(Math.ceil(n.toString(2).length / 2));
+          for (;;) {
+            const next = (x + n / x) >> 1n;
+            if (next >= x) break;
+            x = next;
+          }
+          while ((x + 1n) * (x + 1n) <= n) x += 1n;
+          while (x * x > n) x -= 1n;
+          return x;
+        }
+
+        function icbrt(n) {
+          if (n < 2n) return n;
+          let x = 1n << BigInt(Math.ceil(n.toString(2).length / 3));
+          for (;;) {
+            const next = (2n * x + n / (x * x)) / 3n;
+            if (next >= x) break;
+            x = next;
+          }
+          while ((x + 1n) ** 3n <= n) x += 1n;
+          while (x ** 3n > n) x -= 1n;
+          return x;
+        }
+
+        /* ── SHA-512 (FIPS 180-4) ──────────────────────────────────────────────────
+         * Таблицы не переписаны руками: K — первые 64 бита дробной части кубического
+         * корня из простых, H — из квадратных корней первых восьми простых. Считаются
+         * один раз при первом хешировании, опечатка в 88 числах поэтому невозможна.
+         */
+        let tables = null;
+
+        function sha512Tables() {
+          if (tables) return tables;
+          const primes = [];
+          for (let candidate = 2; primes.length < 80; candidate += 1) {
+            let simple = true;
+            for (const prime of primes) {
+              if (prime * prime > candidate) break;
+              if (candidate % prime === 0) { simple = false; break; }
+            }
+            if (simple) primes.push(candidate);
+          }
+          const k = [];
+          for (const prime of primes) k.push(icbrt(BigInt(prime) * (1n << 192n)) & MASK64);
+          const h = [];
+          for (const prime of primes.slice(0, 8)) h.push(isqrt(BigInt(prime) * (1n << 128n)) & MASK64);
+          tables = { k, h };
+          return tables;
+        }
+
+        const rotr = (value, bits) => {
+          const n = BigInt(bits);
+          return ((value >> n) | (value << (64n - n))) & MASK64;
+        };
+
+        /** 64 байта хеша; тот же результат, что у crypto.createHash("sha512"). */
+        function sha512(message) {
+          const bytes = typeof message === "string" ? new TextEncoder().encode(message) : message;
+          const { k } = sha512Tables();
+          const h = sha512Tables().h.slice();
+          const total = ((bytes.length + 16) >> 7 << 7) + 128;
+          const block = new Uint8Array(total);
+          block.set(bytes);
+          block[bytes.length] = 0x80;
+          const bits = BigInt(bytes.length) * 8n;
+          for (let index = 0; index < 8; index += 1) block[total - 1 - index] = Number((bits >> BigInt(index * 8)) & 0xffn);
+          const view = new DataView(block.buffer);
+          const w = new Array(80);
+
+          for (let offset = 0; offset < total; offset += 128) {
+            for (let index = 0; index < 16; index += 1) {
+              w[index] = (BigInt(view.getUint32(offset + index * 8)) << 32n) | BigInt(view.getUint32(offset + index * 8 + 4));
+            }
+            for (let index = 16; index < 80; index += 1) {
+              const s0 = rotr(w[index - 15], 1) ^ rotr(w[index - 15], 8) ^ (w[index - 15] >> 7n);
+              const s1 = rotr(w[index - 2], 19) ^ rotr(w[index - 2], 61) ^ (w[index - 2] >> 6n);
+              w[index] = (w[index - 16] + s0 + w[index - 7] + s1) & MASK64;
+            }
+            let [a, b, c, d, e, f, g, hh] = h;
+            for (let index = 0; index < 80; index += 1) {
+              const big1 = rotr(e, 14) ^ rotr(e, 18) ^ rotr(e, 41);
+              const choice = (e & f) ^ ((MASK64 ^ e) & g);
+              const one = (hh + big1 + choice + k[index] + w[index]) & MASK64;
+              const big0 = rotr(a, 28) ^ rotr(a, 34) ^ rotr(a, 39);
+              const majority = (a & b) ^ (a & c) ^ (b & c);
+              const two = (majority + big0) & MASK64;
+              hh = g; g = f; f = e; e = (d + one) & MASK64;
+              d = c; c = b; b = a; a = (one + two) & MASK64;
+            }
+            const sum = [a, b, c, d, e, f, g, hh];
+            for (let index = 0; index < 8; index += 1) h[index] = (h[index] + sum[index]) & MASK64;
+          }
+
+          const out = new Uint8Array(64);
+          for (let index = 0; index < 8; index += 1) {
+            for (let byte = 0; byte < 8; byte += 1) {
+              out[index * 8 + byte] = Number((h[index] >> BigInt(56 - byte * 8)) & 0xffn);
+            }
+          }
+          return out;
+        }
+
+        /* ── little-endian ───────────────────────────────────────────────────────── */
+
+        function leToBigInt(bytes) {
+          let value = 0n;
+          for (let index = bytes.length - 1; index >= 0; index -= 1) value = (value << 8n) | BigInt(bytes[index]);
+          return value;
+        }
+
+        function bigIntToLe(value, size) {
+          const out = new Uint8Array(size);
+          let rest = value;
+          for (let index = 0; index < size; index += 1) {
+            out[index] = Number(rest & 0xffn);
+            rest >>= 8n;
+          }
+          return out;
+        }
+
+        function concat(...parts) {
+          const total = parts.reduce((sum, part) => sum + part.length, 0);
+          const out = new Uint8Array(total);
+          let at = 0;
+          for (const part of parts) {
+            out.set(part, at);
+            at += part.length;
+          }
+          return out;
+        }
+
+        /* ── кривая (расширенные координаты Эдвардса: x = X/Z, y = Y/Z, T = xy/Z) ─ */
+
+        const D = mod(-121665n * inv(121666n));
+        const SQRT_M1 = pow(2n, (P - 1n) / 4n, P);
+        const ZERO = [0n, 1n, 1n, 0n];
+
+        function addPoint(p1, p2) {
+          const [x1, y1, z1, t1] = p1;
+          const [x2, y2, z2, t2] = p2;
+          const a = mod((y1 - x1) * (y2 - x2));
+          const b = mod((y1 + x1) * (y2 + x2));
+          const c = mod(t1 * 2n * D * t2);
+          const dd = mod(z1 * 2n * z2);
+          const e = mod(b - a);
+          const f = mod(dd - c);
+          const g = mod(dd + c);
+          const hh = mod(b + a);
+          return [mod(e * f), mod(g * hh), mod(f * g), mod(e * hh)];
+        }
+
+        function doublePoint(point) {
+          const [x, y, z, t] = point;
+          const a = mod(x * x);
+          const b = mod(y * y);
+          const c = mod(2n * mod(z * z));
+          const dd = mod(-a);
+          const e = mod((x + y) ** 2n - a - b);
+          const g = mod(dd + b);
+          const f = mod(g - c);
+          const hh = mod(dd - b);
+          return [mod(e * f), mod(g * hh), mod(f * g), mod(e * hh)];
+        }
+
+        function multiply(scalar, point) {
+          let result = ZERO;
+          let addend = point;
+          let k = scalar;
+          while (k > 0n) {
+            if (k & 1n) result = addPoint(result, addend);
+            addend = doublePoint(addend);
+            k >>= 1n;
+          }
+          return result;
+        }
+
+        /** Распаковка точки из 32 байт (RFC 8032, §5.6.1). null — точка вне кривой. */
+        function decompress(bytes) {
+          if (bytes.length !== 32) return null;
+          const copy = Uint8Array.from(bytes);
+          const sign = (copy[31] >> 7) & 1;
+          copy[31] &= 0x7f;
+          const y = leToBigInt(copy);
+          if (y >= P) return null;
+          const y2 = mod(y * y);
+          const u = mod(y2 - 1n);
+          const v = mod(D * y2 + 1n);
+          // x² = (y² − 1) / (d·y² + 1); для p ≡ 5 (mod 8) корень — степень (p+3)/8,
+          // а если попался корень из −x², домножаем на √−1.
+          const square = mod(u * inv(v));
+          let x = pow(square, (P + 3n) / 8n, P);
+          if (mod(x * x) !== square) {
+            x = mod(x * SQRT_M1);
+            if (mod(x * x) !== square) return null;
+          }
+          if (x === 0n && sign === 1) return null;
+          if (Number(x & 1n) !== sign) x = P - x;
+          return [mod(x * v), mod(y * v), v, mod(x * y % P * v)];
+        }
+
+        /** Упаковка точки в 32 байта: y + старший бит = чётность x. */
+        function compress(point) {
+          const [x, y, z] = point;
+          const zi = inv(z);
+          const affineX = mod(x * zi);
+          const affineY = mod(y * zi);
+          const out = bigIntToLe(affineY, 32);
+          if (affineX & 1n) out[31] |= 0x80;
+          return out;
+        }
+
+        /*
+         * Базовая точка: y = 4/5, sign = 0. Восстанавливается лениво — в браузере без
+         * BigInt (а он и есть причина всего этого файла) вычисление не должно падать
+         * прямо при загрузке страницы: сначала страница успевает объяснить, что делать.
+         */
+        let basePoint = null;
+
+        function base() {
+          if (!basePoint) {
+            const y = mod(4n * inv(5n));
+            const point = decompress(bigIntToLe(y, 32));
+            if (!point) throw new Error("Не удалось восстановить базовую точку Ed25519.");
+            basePoint = point;
+          }
+          return basePoint;
+        }
+
+        /* ── ключи, подпись, проверка (RFC 8032 §5.1.6) ─────────────────────────── */
+
+        function expandSeed(seed) {
+          const hash = sha512(seed);
+          const head = hash.slice(0, 32);
+          head[0] &= 0xf8;
+          head[31] = (head[31] & 0x7f) | 0x40;
+          return { scalar: leToBigInt(head), prefix: hash.slice(32) };
+        }
+
+        /** Открытый ключ (32 байта) по 32-байтному seed'у. */
+        function publicKeyFromSeed(seed) {
+          return compress(multiply(expandSeed(seed).scalar, base()));
+        }
+
+        /** 64-байтная подпись; seed — 32 байта из PKCS#8. */
+        function sign(seed, message) {
+          const { scalar, prefix } = expandSeed(seed);
+          const g = base();
+          const publicKey = compress(multiply(scalar, g));
+          const r = mod(leToBigInt(sha512(concat(prefix, message))), L);
+          const bigR = compress(multiply(r, g));
+          const k = mod(leToBigInt(sha512(concat(bigR, publicKey, message))), L);
+          return concat(bigR, bigIntToLe(mod(r + k * scalar, L), 32));
+        }
+
+        function verify(publicKey, signature, message) {
+          if (signature.length !== 64 || publicKey.length !== 32) return false;
+          const s = leToBigInt(signature.slice(32));
+          if (s >= L) return false;
+          const pointA = decompress(publicKey);
+          const pointR = decompress(signature.slice(0, 32));
+          if (!pointA || !pointR) return false;
+          const k = mod(leToBigInt(sha512(concat(signature.slice(0, 32), publicKey, message))), L);
+          const left = multiply(s, base());
+          const right = addPoint(pointR, multiply(k, pointA));
+          const a = compress(left);
+          const b = compress(right);
+          let diff = 0;
+          for (let index = 0; index < 32; index += 1) diff |= a[index] ^ b[index];
+          return diff === 0;
+        }
+
+        return { sha512, sign, verify, publicKeyFromSeed, compress, decompress, multiply, BASE: base, ORDER: L };
+      })();
+
+
         const subtle = globalThis.crypto?.subtle ?? null;
 
         /** DER-префикс открытого ключа Ed25519 в SPKI (32 байта ключа идут за ним). */
@@ -1153,12 +1458,12 @@
         }
 
         /**
-         * Поддержка ли алгоритм — этим проверяем наличие функций, но его в браузере
-         * может не быть: Ed25519 в WebCrypto появился в Chrome/Edge только в 137
-         * (май 2025), в Firefox — в 130, в Safari — в 17. Браузеры на старом Chromium
-         * (Яндекс, старые Opera/QQ) отдают функции, а на подписи падают DOMException
-         * с ПУСТЫМ сообщением — пользователь видит «не получилось», и непонятно почему.
-         * Поэтому отдельная проверка: просим браузер сгенерировать ключ Ed25519.
+         * Поддержку алгоритма наличием функций не проверить: Ed25519 в WebCrypto
+         * появился в Chrome/Edge только в 137 (май 2025), в Firefox — в 130, в Safari —
+         * в 17. Браузеры на старом Chromium (Яндекс, старые Opera) функции отдают, а на
+         * подписе бросают DOMException с ПУСТЫМ сообщением. Поэтому спрашиваем браузер
+         * делом: просим сгенерировать ключ. Не умеет — подписывает встроенный JS, и код
+         * всё равно выходит тем же (побайтовая сверка — в station/tests/ed25519.test.mjs).
          */
         let ed25519Probe = null;
 
@@ -1173,6 +1478,11 @@
             }
           }
           return ed25519Probe;
+        }
+
+        /** Чем в итоге подписали: «webcrypto» или «js» — для отладки и для станции. */
+        async function signingMode() {
+          return (await ed25519Available()) ? "webcrypto" : "js";
         }
 
         /** Человекочитаемая причина провала подписи (у DOMException часто пусто). */
@@ -1209,7 +1519,6 @@
          * ключ — тот самый», даже когда PKCS#8 открытого ключа не содержит.
          */
         async function matchKey({ privateKeyBase64, keys = [] } = {}) {
-          if (!ed25519Supported()) return { ok: false, message: "Браузер не поддерживает Ed25519." };
           let seed;
           let embedded;
           try {
@@ -1218,18 +1527,15 @@
             return { ok: false, message: error?.message ?? "Закрытый ключ не читается." };
           }
           const challenge = new Uint8Array(32).map((_, index) => (index * 7 + 11) & 0xff);
+          const signature = await signWithSeed(seed, embedded ?? AGRO_ED25519.publicKeyFromSeed(seed), challenge);
           for (const entry of keys) {
+            let accepted = false;
             try {
-              const x = base64UrlFromBytes(embedded ?? rawPublicFromSpki(entry.publicKey));
-              const signingKey = await subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x, d: base64UrlFromBytes(seed) }, { name: "Ed25519" }, false, ["sign"]);
-              const verifyKey = await importVerifyKey(entry.publicKey);
-              const signature = await subtle.sign({ name: "Ed25519" }, signingKey, challenge);
-              if ((await subtle.verify({ name: "Ed25519" }, verifyKey, signature, challenge)) === true) {
-                return { ok: true, keyId: Number(entry.keyId) || 1, label: String(entry.label ?? "") };
-              }
+              accepted = await verifyWithRaw(rawPublicFromSpki(entry.publicKey), signature, challenge);
             } catch {
-              /* этот ключ не подошёл — пробуем следующий */
+              accepted = false;
             }
+            if (accepted) return { ok: true, keyId: Number(entry.keyId) || 1, label: String(entry.label ?? "") };
           }
           return { ok: false, message: "Закрытый ключ не соответствует ни одному открытому ключу приложения." };
         }
@@ -1253,17 +1559,46 @@
           throw new Error("Открытый ключ должен быть SPKI Ed25519 (44 байта) или голым ключом (32 байта).");
         }
 
-        async function importSigningKey(privateKeyBase64, publicKeyBase64 = "") {
-          if (!ed25519Supported()) throw new Error("Браузер не поддерживает Ed25519 в WebCrypto.");
-          const { seed, publicKey } = readPkcs8(privateKeyBase64);
-          const x = publicKey ? base64UrlFromBytes(publicKey) : publicKeyBase64 ? base64UrlFromBytes(rawPublicFromSpki(publicKeyBase64)) : "";
-          if (!x) throw new Error("Нечем подписать: у закрытого ключа нет открытого — вставьте keys.cjs/JSON с publicKey или добавьте ключ в приложение.");
-          return subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x, d: base64UrlFromBytes(seed) }, { name: "Ed25519" }, false, ["sign"]);
+        /** 32 байта открытого ключа: из PKCS#8 → из SPKI → восстановленный из seed. */
+        function publicKeyBytesFor(privateKeyBase64, publicKeyBase64 = "") {
+          const { seed, publicKey: embedded } = readPkcs8(privateKeyBase64);
+          if (embedded) return { seed, publicKey: embedded };
+          if (publicKeyBase64) return { seed, publicKey: rawPublicFromSpki(publicKeyBase64) };
+          // Открытого ключа в PKCS#8 нет — восстанавливаем из seed. Подписать можно и
+          // так, а список ключей приложения результат всё равно проверит ниже.
+          return { seed, publicKey: AGRO_ED25519.publicKeyFromSeed(seed) };
         }
 
-        async function importVerifyKey(spkiBase64) {
-          if (!ed25519Supported()) throw new Error("Браузер не поддерживает Ed25519 в WebCrypto.");
-          return subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(rawPublicFromSpki(spkiBase64)) }, { name: "Ed25519" }, true, ["verify"]);
+        /** Подпись: сначала браузер, при его отказе — встроенный JS. */
+        async function signWithSeed(seed, publicKeyBytes, message) {
+          if (await ed25519Available()) {
+            try {
+              const key = await subtle.importKey(
+                "jwk",
+                { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(publicKeyBytes), d: base64UrlFromBytes(seed) },
+                { name: "Ed25519" },
+                false,
+                ["sign"],
+              );
+              return new Uint8Array(await subtle.sign({ name: "Ed25519" }, key, message));
+            } catch {
+              /* браузер передумал — подписываем сами, пользователь не виноват */
+            }
+          }
+          return AGRO_ED25519.sign(seed, message);
+        }
+
+        /** Проверка подписи — тем же способом, что и подпись. */
+        async function verifyWithRaw(rawPublicKey, signature, message) {
+          if (await ed25519Available()) {
+            try {
+              const key = await subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(rawPublicKey) }, { name: "Ed25519" }, true, ["verify"]);
+              return (await subtle.verify({ name: "Ed25519" }, key, signature, message)) === true;
+            } catch {
+              return AGRO_ED25519.verify(rawPublicKey, signature, message);
+            }
+          }
+          return AGRO_ED25519.verify(rawPublicKey, signature, message);
         }
 
         /**
@@ -1312,9 +1647,8 @@
           const payload = bound
             ? AGRO_L.bindPayload({ keyId, shortId: cleanShort, serial: serialBytes })
             : core.buildPayload({ keyId, serial: serialBytes, bound: false });
-          const { publicKey: embedded } = readPkcs8(privateKeyBase64);
-          const signingKey = await importSigningKey(privateKeyBase64, publicKeyFor({ publicKeyBase64, embedded, keys, keyId }));
-          const signature = new Uint8Array(await subtle.sign({ name: "Ed25519" }, signingKey, payload));
+          const { seed, publicKey: publicKeyBytes } = publicKeyBytesFor(privateKeyBase64, publicKeyFor({ publicKeyBase64, keys, keyId }));
+          const signature = await signWithSeed(seed, publicKeyBytes, payload);
           const bytes = new Uint8Array(core.LICENSE_LENGTH);
           bytes.set(payload, 0);
           bytes.set(signature, core.PAYLOAD_LENGTH);
@@ -1339,7 +1673,7 @@
           const publicKeys = [];
           for (const entry of entries) {
             try {
-              publicKeys.push({ entry, key: await importVerifyKey(entry.publicKey) });
+              publicKeys.push({ entry, raw: rawPublicFromSpki(entry.publicKey) });
             } catch {
               /* ключ не читается — как в приложении: его просто нет в списке */
             }
@@ -1392,9 +1726,9 @@
 
             let signed = false;
             let matchedKeyId = license.keyId;
-            for (const { entry, key } of ordered) {
+            for (const { entry, raw } of ordered) {
               try {
-                signed = (await subtle.verify({ name: "Ed25519" }, key, signature, payload)) === true;
+                signed = await verifyWithRaw(raw, signature, payload);
               } catch {
                 signed = false;
               }
@@ -1546,10 +1880,13 @@
           // разбор заявки
           parseRequest,
           resolveMachine,
-          // криптография браузера
+          // криптография браузера (и встроенный запасной путь)
           ed25519Supported,
           ed25519Available,
+          signingMode,
           signErrorText,
+          signWithSeed,
+          verifyWithRaw,
           publicFromPrivate,
           matchKey,
           issueCode,
@@ -1640,14 +1977,17 @@
       }
 
       const CRYPTO_HINT =
-        "Этот браузер не умеет подписывать Ed25519 средствами WebCrypto: " +
-        "алгоритм появился в Chrome и Edge только в версии 137, в Firefox — 130, в Safari — 17. " +
-        "На Яндекс.Браузере и других старых Chromium подписи нет. Откройте страницу в свежем " +
-        "Chrome/Edge/Firefox — или выдавайте коды без браузера: npm run license:studio";
+        "Браузер слишком старый: в нём нет BigInt — он нужен для подписи кода. " +
+        "Откройте страницу в браузере не старше 2019 года (Chrome, Edge, Firefox, Safari) " +
+        "или выдавайте коды без браузера: npm run license:studio";
 
-      /** Проверяет поддержку алгоритма (не наличие функций!) и объясняет отказ. */
-      async function cryptoCheck() {
-        if (await AGRO.ed25519Available()) return true;
+      /**
+       * Подпись ставит браузер (WebCrypto Ed25519), а если браузер её не умеет —
+       * встроенный в страницу код: он даёт побайтово тот же результат. Поэтому
+       * требование к браузеру одно — работать BigInt.
+       */
+      function cryptoCheck() {
+        if (typeof BigInt === "function") return true;
         note(CRYPTO_HINT, true);
         return false;
       }
@@ -1687,7 +2027,7 @@
           note(`Ключ не подходит: ${entry.problem}. Нужен файл license-key.json целиком или строка privateKey из него (64 символа, начинается с MC4CAQAw).`, true);
           return;
         }
-        if (!(await cryptoCheck())) return;
+        if (!cryptoCheck()) return;
         const text = $("src").value.trim();
         if (!text) {
           note("Вставьте текст покупателя или код компьютера.", true);
@@ -1748,7 +2088,7 @@
           $("go").disabled = false;
         }
         if (!issued) {
-          note(`Не получилось подписать: ${failure}${/Ed25519|WebCrypto/i.test(failure) ? "" : " (если браузер старый — см. подсказку про Ed25519)"}`, true);
+          note(`Не получилось подписать: ${failure}`, true);
           return;
         }
 
@@ -1770,7 +2110,7 @@
         const before = issuedHistory().filter((row) => row.shortId === shortId && row.serial !== issued.serialHex);
         write(STORE.issued, JSON.stringify([...issuedHistory(), { at: AGRO.stamp(), shortId, serial: issued.serialHex }].slice(-400)));
         note(
-          `Код для компьютера ${pretty} · серийник ${issued.serialHex}` +
+          `Код для компьютера ${pretty} · серийник ${issued.serialHex} · ключ key-id=${issued.keyId}` +
             (before.length
               ? ` · у этого компьютера уже был выдан код (${before.map((row) => row.serial).join(", ")}) — прежний сам не отзывается, отзывается только списком отзыва при пересборке`
               : " · нажмите на поле с кодом, чтобы скопировать"),
