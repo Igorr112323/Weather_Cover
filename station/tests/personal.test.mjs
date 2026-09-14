@@ -264,4 +264,56 @@ describe("сборка страницы с вшитым ключом", () => {
     assert.notEqual(dom.get("out").value, code, "повторная выдача обязана давать новый код");
     dom.close();
   });
+
+  it("голая строка privateKey: keyId берётся из списка приложения", async () => {
+    // Раньше ключ по умолчанию считался keyId 1 — и код подписывался не тем
+    // открытым ключом, а страница потом не могла объяснить отказ.
+    const dom = fakePage(PAGE_SCRIPT());
+    dom.storage.set("agro.personal.keys", JSON.stringify({ keys: [{ keyId: 7, label: "магазин", publicKey: SPKI_B64 }], revokedSerials: [] }));
+    dom.set("key", PKCS8_B64);
+    await dom.click("saveKey");
+    dom.set("src", PRETTY);
+    await dom.click("go");
+
+    const code = dom.get("out").value;
+    assert.match(code, /^AGRO-/, `код не выдан: ${dom.get("msg").textContent}`);
+    const check = core.verifyCode({ code, keys: [{ keyId: 7, publicKey: SPKI_B64 }], machineShortId: SHORT });
+    assert.equal(check.ok, true, `приложение не приняло код: ${JSON.stringify(check)}`);
+    assert.match(dom.get("msg").textContent, /keyId 7|key-id 7|7/i, "не сказано, каким ключом выдан код");
+    dom.close();
+  });
+
+  it("браузер без Ed25519 объясняет причину, а не молчит", async () => {
+    // Реальная жалоба: на старом Chromium (Яндекс.Браузер) WebCrypto не знает
+    // алгоритм Ed25519, DOMException приходит с ПУСТЫМ сообщением, и страница
+    // печатала «Не получилось подписать: » без причины.
+    const broken = {
+      subtle: {
+        importKey: async () => {
+          throw Object.assign(new Error(""), { name: "NotSupportedError" });
+        },
+        sign: async () => {
+          throw Object.assign(new Error(""), { name: "NotSupportedError" });
+        },
+        generateKey: async () => {
+          throw Object.assign(new Error(""), { name: "NotSupportedError" });
+        },
+      },
+      getRandomValues: (array) => array,
+    };
+
+    const dom = fakePage(PAGE_SCRIPT(), { crypto: broken });
+    dom.set("key", PKCS8_B64);
+    await dom.click("saveKey");
+    dom.set("src", PRETTY);
+    await dom.click("go");
+
+    const msg = dom.get("msg").textContent;
+    assert.equal(dom.get("out").value, "", "без подписи кода быть не должно");
+    assert.match(msg, /Ed25519/, `нет слова про Ed25519: ${msg}`);
+    assert.match(msg, /137/, "не названа версия браузера, с которой всё работает");
+    assert.match(msg, /license:studio/, "не предложена выдача на Node");
+    assert.ok(!/:\s*$/.test(msg), `сообщение обрывается: ${msg}`);
+    dom.close();
+  });
 });

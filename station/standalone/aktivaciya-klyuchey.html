@@ -1304,6 +1304,39 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
           return Boolean(subtle && typeof subtle.importKey === "function" && typeof subtle.sign === "function");
         }
 
+        /**
+         * Поддержка ли алгоритм — этим проверяем наличие функций, но его в браузере
+         * может не быть: Ed25519 в WebCrypto появился в Chrome/Edge только в 137
+         * (май 2025), в Firefox — в 130, в Safari — в 17. Браузеры на старом Chromium
+         * (Яндекс, старые Opera/QQ) отдают функции, а на подписи падают DOMException
+         * с ПУСТЫМ сообщением — пользователь видит «не получилось», и непонятно почему.
+         * Поэтому отдельная проверка: просим браузер сгенерировать ключ Ed25519.
+         */
+        let ed25519Probe = null;
+
+        async function ed25519Available() {
+          if (!ed25519Supported()) return false;
+          if (ed25519Probe === null) {
+            try {
+              await subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]);
+              ed25519Probe = true;
+            } catch {
+              ed25519Probe = false;
+            }
+          }
+          return ed25519Probe;
+        }
+
+        /** Человекочитаемая причина провала подписи (у DOMException часто пусто). */
+        function signErrorText(error) {
+          const text = String(error?.message ?? "").trim();
+          if (text) return text;
+          const name = String(error?.name ?? "");
+          if (/NotSupported/i.test(name)) return "браузер не поддерживает Ed25519 — нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+";
+          if (/Invalid|Data|Syntax/i.test(name)) return "ключ прочитан не целиком: вставляйте privateKey без пропусков и переносов";
+          return name || "браузер отказался подписывать без объяснения (чаще всего — нет Ed25519 в WebCrypto)";
+        }
+
         /** PKCS#8 base64 → 32-байтный seed (при возможности — и открытый ключ). */
         function readPkcs8(privateKeyBase64) {
           const hex = hexFromBytes(bytesFromBase64(privateKeyBase64));
@@ -1667,6 +1700,8 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
           resolveMachine,
           // криптография браузера
           ed25519Supported,
+          ed25519Available,
+          signErrorText,
           publicFromPrivate,
           matchKey,
           issueCode,

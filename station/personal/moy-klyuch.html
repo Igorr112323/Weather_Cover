@@ -1152,6 +1152,39 @@
           return Boolean(subtle && typeof subtle.importKey === "function" && typeof subtle.sign === "function");
         }
 
+        /**
+         * Поддержка ли алгоритм — этим проверяем наличие функций, но его в браузере
+         * может не быть: Ed25519 в WebCrypto появился в Chrome/Edge только в 137
+         * (май 2025), в Firefox — в 130, в Safari — в 17. Браузеры на старом Chromium
+         * (Яндекс, старые Opera/QQ) отдают функции, а на подписи падают DOMException
+         * с ПУСТЫМ сообщением — пользователь видит «не получилось», и непонятно почему.
+         * Поэтому отдельная проверка: просим браузер сгенерировать ключ Ed25519.
+         */
+        let ed25519Probe = null;
+
+        async function ed25519Available() {
+          if (!ed25519Supported()) return false;
+          if (ed25519Probe === null) {
+            try {
+              await subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]);
+              ed25519Probe = true;
+            } catch {
+              ed25519Probe = false;
+            }
+          }
+          return ed25519Probe;
+        }
+
+        /** Человекочитаемая причина провала подписи (у DOMException часто пусто). */
+        function signErrorText(error) {
+          const text = String(error?.message ?? "").trim();
+          if (text) return text;
+          const name = String(error?.name ?? "");
+          if (/NotSupported/i.test(name)) return "браузер не поддерживает Ed25519 — нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+";
+          if (/Invalid|Data|Syntax/i.test(name)) return "ключ прочитан не целиком: вставляйте privateKey без пропусков и переносов";
+          return name || "браузер отказался подписывать без объяснения (чаще всего — нет Ed25519 в WebCrypto)";
+        }
+
         /** PKCS#8 base64 → 32-байтный seed (при возможности — и открытый ключ). */
         function readPkcs8(privateKeyBase64) {
           const hex = hexFromBytes(bytesFromBase64(privateKeyBase64));
@@ -1515,6 +1548,8 @@
           resolveMachine,
           // криптография браузера
           ed25519Supported,
+          ed25519Available,
+          signErrorText,
           publicFromPrivate,
           matchKey,
           issueCode,
@@ -1604,6 +1639,19 @@
         return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "", problem: keyProblem(raw) };
       }
 
+      const CRYPTO_HINT =
+        "Этот браузер не умеет подписывать Ed25519 средствами WebCrypto: " +
+        "алгоритм появился в Chrome и Edge только в версии 137, в Firefox — 130, в Safari — 17. " +
+        "На Яндекс.Браузере и других старых Chromium подписи нет. Откройте страницу в свежем " +
+        "Chrome/Edge/Firefox — или выдавайте коды без браузера: npm run license:studio";
+
+      /** Проверяет поддержку алгоритма (не наличие функций!) и объясняет отказ. */
+      async function cryptoCheck() {
+        if (await AGRO.ed25519Available()) return true;
+        note(CRYPTO_HINT, true);
+        return false;
+      }
+
       function note(text, bad = false) {
         $("msg").textContent = text;
         $("msg").className = bad ? "msg msg--bad" : "msg";
@@ -1639,10 +1687,7 @@
           note(`Ключ не подходит: ${entry.problem}. Нужен файл license-key.json целиком или строка privateKey из него (64 символа, начинается с MC4CAQAw).`, true);
           return;
         }
-        if (!AGRO.ed25519Supported()) {
-          note("Браузер не умеет Ed25519. Нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+.", true);
-          return;
-        }
+        if (!(await cryptoCheck())) return;
         const text = $("src").value.trim();
         if (!text) {
           note("Вставьте текст покупателя или код компьютера.", true);
@@ -1664,6 +1709,26 @@
         const keys = entry;
         const config = publicConfig();
 
+        // Если вставили одну строку privateKey, ключа в списке нет: открытый ключ
+        // читается из самого PKCS#8, а keyId берётся из списка приложения. Иначе
+        // подпись встала бы чужим открытым ключом и код бы не приняли.
+        let keyId = keys.keyId;
+        let publicKey = keys.publicKey;
+        if (!publicKey) {
+          try {
+            publicKey = AGRO.publicFromPrivate(keys.privateKeyBase64) || "";
+          } catch {
+            publicKey = "";
+          }
+        }
+        const known = config.keys.find((item) => item.publicKey === publicKey);
+        if (known) {
+          keyId = Number(known.keyId) || keyId;
+        } else if (publicKey && config.keys.length) {
+          note("Код не будет принят: это закрытый ключ от другого набора — в приложении (electron/license/keys.cjs) записан другой открытый ключ.", true);
+          return;
+        }
+
         note("Подписываю…");
         $("go").disabled = true;
         let issued = null;
@@ -1671,19 +1736,19 @@
         try {
           issued = await AGRO.issueCode({
             privateKeyBase64: keys.privateKeyBase64,
-            publicKeyBase64: keys.publicKey,
+            publicKeyBase64: publicKey,
             keys: config.keys,
-            keyId: keys.keyId,
+            keyId,
             bound: true,
             shortId,
           });
         } catch (error) {
-          failure = String(error?.message ?? error);
+          failure = AGRO.signErrorText(error);
         } finally {
           $("go").disabled = false;
         }
         if (!issued) {
-          note(`Не получилось подписать: ${failure}`, true);
+          note(`Не получилось подписать: ${failure}${/Ed25519|WebCrypto/i.test(failure) ? "" : " (если браузер старый — см. подсказку про Ed25519)"}`, true);
           return;
         }
 
@@ -1768,6 +1833,7 @@
         }
       });
 
+      void cryptoCheck();
       if (!renderKeyState()) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
       else $("src").focus();
     </script>

@@ -6,12 +6,15 @@
  * набор API, которым пользуются эти скрипты: id-элементы собираются по вызовам
  * $("…"), события — по addEventListener, хранилище — Map вместо localStorage.
  * Тот же realm, что и у теста, поэтому Buffer и Uint8Array из ядра подходят.
+ *
+ * `extra` — чем подменить окружение (например `crypto` без Ed25519, чтобы
+ * проверить объяснение для старого браузера).
  */
 
 import assert from "node:assert/strict";
 import vm from "node:vm";
 
-export function fakePage(script) {
+export function fakePage(script, extra = {}) {
   const listeners = new Map();
   const ids = [...script.matchAll(/\$\("([^"]+)"\)/g)].map((match) => match[1]);
   const nodes = new Map();
@@ -69,6 +72,7 @@ export function fakePage(script) {
     setTimeout,
     clearTimeout,
     console,
+    ...extra,
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(`(() => {\n"use strict";\n${script}\n})()`, context);
