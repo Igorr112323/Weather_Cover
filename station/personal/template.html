@@ -156,6 +156,23 @@
         }
       }
 
+      /**
+       * Почему вставленное значение не является закрытым ключом (пустая строка —
+       * всё в порядке). Отдельная проверка нужна из-за частой ошибки: вставляют
+       * образец из подсказки (там «…» и кавычки), и WebCrypto падает с
+       * «characters outside of the Latin1 range» — сообщение совершенно
+       * непонятное для человека.
+       */
+      function keyProblem(value) {
+        const flat = String(value ?? "").trim().replace(/\s+/g, "");
+        if (!flat) return "в файле нет privateKey";
+        if (/[^\x20-\x7e]/.test(flat)) return "в строке есть «…» или непечатаемые символы — это образец из подсказки, а не ключ";
+        if (/[«»"'`.,;:]/.test(flat)) return "в строке есть кавычки или точки — нужен сам ключ, без оформления";
+        if (!/^[A-Za-z0-9+/=]+$/.test(flat)) return "в строке есть символы вне base64 (разрешены A–Z, a–z, 0–9, +, /, =)";
+        if (flat.length < 60) return `ключ короткий: ${flat.length} символов, нужно 64 или больше`;
+        return "";
+      }
+
       /** Закрытый ключ: вшитый при сборке, иначе введённый в этом браузере. */
       function secret() {
         const raw = read(STORE.secret).trim() || BAKED_SECRET.trim();
@@ -166,10 +183,12 @@
           const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
           if (found.length) {
             const last = found[found.length - 1];
-            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "" };
+            const problem = keyProblem(last.privateKey);
+            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "", problem };
           }
+          if (parsed && typeof parsed === "object" && "privateKey" in parsed) return { keyId: 1, privateKeyBase64: "", publicKey: "", problem: keyProblem(parsed.privateKey) };
         } catch { /* не JSON — значит вставили base64 */ }
-        return /^[A-Za-z0-9+/=]{60,}$/.test(raw) ? { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "" } : null;
+        return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "", problem: keyProblem(raw) };
       }
 
       function note(text, bad = false) {
@@ -202,6 +221,11 @@
           $("key").focus();
           return;
         }
+        const entry = secret();
+        if (entry?.problem) {
+          note(`Ключ не подходит: ${entry.problem}. Нужен файл license-key.json целиком или строка privateKey из него (64 символа, начинается с MC4CAQAw).`, true);
+          return;
+        }
         if (!AGRO.ed25519Supported()) {
           note("Браузер не умеет Ed25519. Нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+.", true);
           return;
@@ -224,7 +248,7 @@
         }
         const shortId = target.shortId ?? target;
         const pretty = target.pretty || AGRO.prettyShortId(shortId);
-        const keys = secret();
+        const keys = entry;
         const config = publicConfig();
 
         note("Подписываю…");
@@ -293,9 +317,15 @@
           return;
         }
         write(STORE.secret, raw);
-        if (!secret()) {
+        const stored = secret();
+        if (!stored) {
           forget(STORE.secret);
-          note("Не похоже на ключ: нужен JSON из secrets/license-key.json или строка MC4CAQAw…", true);
+          note("Не похоже на ключ: нужен JSON из secrets/license-key.json или строка privateKey (начинается с MC4CAQAw).", true);
+          return;
+        }
+        if (stored.problem) {
+          forget(STORE.secret);
+          note(`Ключ не сохранён: ${stored.problem}.`, true);
           return;
         }
         $("key").value = "";
@@ -325,7 +355,7 @@
         }
       });
 
-      if (!renderKeyState()) note("Вставьте закрытый ключ — он нужен один раз и остаётся в этом браузере.");
+      if (!renderKeyState()) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
       else $("src").focus();
     </script>
   </body>

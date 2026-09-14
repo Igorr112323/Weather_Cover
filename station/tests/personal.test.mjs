@@ -169,6 +169,37 @@ describe("личная страница выдаёт код, который пр
     dom.close();
   });
 
+  it("образец из подсказки вместо ключа объясняется по-человечески", async () => {
+    // Реальная жалоба: вставили пример с «…» из документации — WebCrypto падал
+    // с «characters outside of the Latin1 range», что ничего не объясняет.
+    const dom = fakePage(PAGE_SCRIPT());
+    dom.set("key", '{ "keys": [ { "keyId": 2, "privateKey": "MC4CAQAw…", "publicKey": "MCowBQY…" } ] }');
+    await dom.click("saveKey");
+    assert.match(dom.get("msg").textContent, /образец из подсказки|не ключ/, dom.get("msg").textContent);
+    assert.equal(dom.storage.get("agro.personal.secret") ?? "", "", "образец нельзя сохранять как ключ");
+
+    dom.set("src", PRETTY);
+    await dom.click("go");
+    assert.equal(dom.get("out").value, "");
+    assert.doesNotMatch(dom.get("msg").textContent, /Latin1|atob/i, "техническая ошибка WebCrypto пользователю не показывается");
+    dom.close();
+  });
+
+  it("ключ вставляется и целиком файлом, и одной строкой privateKey", async () => {
+    const entry = JSON.stringify({ keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 });
+    for (const pasted of [entry, PKCS8_B64, `  ${entry}\n\n`]) {
+      const dom = fakePage(PAGE_SCRIPT());
+      dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));
+      dom.set("key", pasted);
+      await dom.click("saveKey");
+      assert.match(dom.get("msg").textContent, /сохранён/i, `не принят вариант вставки: ${pasted.slice(0, 24)}`);
+      dom.set("src", PRETTY);
+      await dom.click("go");
+      assert.match(dom.get("out").value, /^AGRO-/, `не выдан код для варианта: ${pasted.slice(0, 24)}`);
+      dom.close();
+    }
+  });
+
   it("клик по полю с кодом копирует его", async () => {
     const dom = page();
     dom.set("src", PRETTY);
