@@ -79,10 +79,36 @@ export function readKeyEntry(secretFile, keyId = 0) {
 /* ─────────────────────────────── сборка файла ────────────────────────────── */
 
 /** Вшивает ключ в собранную страницу. */
+/**
+ * Блок ввода ключа в напечатанном файле быть не должно — ни разметки, ни
+ * обработчиков: владелец ключ уже вшил, а лишнее поле только сбивает с толку
+ * (в него упрямо вставляют то код компьютера, то контрольную сумму файла).
+ * Шаблон размечен метками KEYUI; сборщик режет всё между ними и следит, чтобы
+ * ни одного следа не осталось.
+ */
+export const KEYUI_MARKUP = /\n?[ \t]*<!-- KEYUI:BEGIN -->[\s\S]*?<!-- KEYUI:END -->\n?/g;
+export const KEYUI_SCRIPT = /\n?[ \t]*\/\* KEYUI:BEGIN \*\/[\s\S]*?\/\* KEYUI:END \*\//g;
+export const KEYUI_TRACES = [
+  "keybox", 'id="key"', 'for="key"', "saveKey", "clearKey", "keysLink", "bakedNote",
+  "ключ загружен — заменить", "ключ не загружен — вставить", "Вставьте закрытый ключ", "Ключ сохранён",
+];
+
+export function removeKeyUi(html) {
+  let out = html.replace(KEYUI_MARKUP, "").replace(KEYUI_SCRIPT, "");
+  if (out === html) throw new Error("В шаблоне нет меток KEYUI — страница соберётся с полем ввода ключа.");
+  for (const marker of KEYUI_TRACES) {
+    if (out.includes(marker)) throw new Error(`В файле остался блок ключа: ${marker}. Проверьте метки KEYUI в шаблоне.`);
+  }
+  for (const leftover of ["<!-- KEYUI", "/* KEYUI"]) {
+    if (out.includes(leftover)) throw new Error(`Метка KEYUI не удалилась: ${leftover} — блок ключа мог остаться наполовину.`);
+  }
+  return out;
+}
+
 export function bake(html, entry) {
   if (!html.includes(MARKER)) throw new Error(`в странице нет метки ${MARKER} — шаблон изменился, поправьте скрипт`);
   const literal = JSON.stringify(JSON.stringify({ keyId: entry.keyId, privateKey: entry.privateKey, publicKey: entry.publicKey }));
-  return html.replace(MARKER, `const BAKED_SECRET = ${literal};`);
+  return removeKeyUi(html.replace(MARKER, `const BAKED_SECRET = ${literal};`));
 }
 
 /**

@@ -270,15 +270,18 @@ describe("сборка страницы с вшитым ключом", () => {
     assert.ok(personalBuilder.stripComments(baked).length < baked.length, "зачистка не сократила файл");
   });
 
-  it("страница с вшитым ключом выдаёт код без поля для ключа", async () => {
+  it("в напечатанном файле поля для ключа нет вовсе, и код всё равно выдаётся", async () => {
     const entry = { keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 };
     const page = personalBuilder.stripComments(personalBuilder.bake(builder.buildPersonal(), entry));
-    assert.ok(!/fetch\(|XMLHttpRequest/.test(page), "зачистка не должна менять поведение");
+
+    // Ни разметки, ни обработчиков, ни текстов про поле ключа.
+    for (const trace of personalBuilder.KEYUI_TRACES) {
+      assert.ok(!page.includes(trace), `в файле остался след блока ключа: ${trace}`);
+    }
+    assert.equal((page.match(/<textarea/g) ?? []).length, 2, "полей ввода должно быть ровно два");
+    assert.equal((page.match(/<button/g) ?? []).length, 1, "кнопка на экране должна быть одна");
+
     const dom = fakePage(/<script>([\s\S]*)<\/script>/.exec(page)[1]);
-    // Ключ вшит → блок ввода ключа скрыт, а под полем результата не про ключ, а
-    // предупреждение, что файл = право подписи.
-    assert.equal(dom.get("keybox").hidden, true, "блок с ключом не должен показываться");
-    assert.equal(dom.get("bakedNote").hidden, false, "про вшитый ключ надо предупредить");
     // Открытые ключи приложения подменяем на тестовые — как это делает владелец,
     // если ключ в проекте сменили, а страницу не пересобирают.
     dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));

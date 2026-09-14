@@ -79,7 +79,9 @@
       .tiny { background: transparent; color: var(--muted); border-color: var(--line); min-width: 0 !important; flex: 0 0 auto !important; padding: 7px 12px; font-size: 13px; }
       .msg { font-size: 12.5px; color: var(--muted); min-height: 18px; margin: 0; }
       .msg--bad { color: var(--danger); }
+      /* KEYUI:BEGIN */
       .keybox { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+      /* KEYUI:END */
       .tip { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
       .foot { margin-top: 14px; text-align: right; }
     </style>
@@ -100,6 +102,7 @@
 
       <p class="msg" id="msg"></p>
 
+      <!-- KEYUI:BEGIN -->
       <section class="keybox" id="keybox" hidden>
         <label class="lbl" for="key">Закрытый ключ приложения — содержимое license-key.json или строка privateKey из него (нужен один раз)</label>
         <textarea id="key" rows="3" spellcheck="false"></textarea>
@@ -114,6 +117,7 @@
         <p class="tip" id="bakedNote" hidden>В этот файл вшит закрытый ключ: выписывать коды может всякий, у кого файл в руках. Держи его у себя, не пересылай и не клади в репозиторий.</p>
         <button id="keysLink" type="button" class="tiny" hidden>сменить ключ</button>
       </div>
+      <!-- KEYUI:END -->
     </main>
 
     <script>
@@ -2056,9 +2060,26 @@
         $("msg").className = bad ? "msg msg--bad" : "msg";
       }
 
+      /**
+       * Есть ли рабочий ключ. В файле, собранном `npm run license:page`, поля для
+       * ключа нет вообще — сборщик вырезает блоки между метками KEYUI, а здесь
+       * остаются только пустые заглушки: ключ тогда вшит в файл.
+       */
       function renderKeyState() {
-        const stored = parseSecret(read(STORE.secret));
         const entry = secret();
+        renderKeyUi(entry);
+        return Boolean(entry) && !entry.problem;
+      }
+
+      /** Показ блока ввода ключа; в напечатанной версии — ничего. */
+      let renderKeyUi = () => {};
+
+      /** Куда смотреть, если ключа нет; в напечатанной версии поля нет. */
+      let askForKey = () => note("Ключ не найден: соберите страницу заново — npm run license:page.", true);
+
+      /* KEYUI:BEGIN */
+      renderKeyUi = function (entry) {
+        const stored = parseSecret(read(STORE.secret));
         const broken = Boolean(stored?.problem) && Boolean(entry?.problem);
         const loaded = Boolean(entry) && !entry.problem;
         const baked = Boolean(BAKED_SECRET.trim());
@@ -2072,8 +2093,13 @@
             : loaded
               ? "ключ загружен — заменить"
               : "ключ не загружен — вставить";
-        return loaded;
-      }
+      };
+
+      askForKey = () => {
+        note("Сначала вставьте закрытый ключ — поле ниже.", true);
+        $("key").focus();
+      };
+      /* KEYUI:END */
 
       function issuedHistory() {
         try {
@@ -2086,8 +2112,7 @@
 
       async function issue() {
         if (!renderKeyState()) {
-          note("Сначала вставьте закрытый ключ — поле ниже.", true);
-          $("key").focus();
+          askForKey();
           return;
         }
         const entry = secret();
@@ -2200,6 +2225,7 @@
         }
         return undefined;
       });
+      /* KEYUI:BEGIN */
       $("saveKey").addEventListener("click", () => {
         const raw = $("key").value.trim();
         if (!raw) {
@@ -2232,6 +2258,7 @@
         $("keybox").hidden = !$("keybox").hidden;
         if (!$("keybox").hidden) $("key").focus();
       });
+      /* KEYUI:END */
       // Клик по полю с кодом = копирование (лишней кнопки на экране нет).
       $("out").addEventListener("click", async () => {
         const value = $("out").value.trim();
@@ -2246,10 +2273,12 @@
       });
 
       void cryptoCheck();
+      /* KEYUI:BEGIN */
       const storedProblem = parseSecret(read(STORE.secret))?.problem ?? "";
       if (storedProblem && secret()?.problem) note(`В сохранённом ключе не то: ${storedProblem}. Вставьте закрытый ключ заново.`, true);
       if (!renderKeyState() && !storedProblem) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
-      else $("src").focus();
+      /* KEYUI:END */
+      if (renderKeyState()) $("src").focus();
     </script>
   </body>
 </html>
