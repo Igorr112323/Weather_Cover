@@ -42,6 +42,44 @@ const NAME_PATTERNS = [
   /^([А-ЯЁA-Z][а-яёa-z]{2,}(?:\s+[А-ЯЁA-Z][а-яёa-z]{2,})?)\s*[,!]/,
 ];
 
+/** Длина полного идентификатора компьютера в hex. */
+const FULL_HEX_LENGTH = 64;
+
+/** Цепочка hex-символов, между которыми мог встать пробел, дефис или перенос. */
+const HEX_LOOSE = /[0-9a-fA-F][0-9a-fA-F \t\r\n-]*[0-9a-fA-F]/g;
+
+/**
+ * Самый длинный «шестнадцатеричный» кусок текста, склеенный в hex-строку.
+ * Нужен потому, что полный идентификатор при пересылке режут: мессенджер
+ * вставляет перенос строки, узкое поле — перенос, кто-то разносит пробелами.
+ * Поиск «64 hex подряд» на таком тексте ничего не находит.
+ */
+function longestHexRun(text) {
+  let best = "";
+  for (const match of String(text ?? "").matchAll(HEX_LOOSE)) {
+    const compact = match[0].replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+    if (compact.length > best.length) best = compact;
+  }
+  return best;
+}
+
+/**
+ * Попадает ли фрагмент внутрь длинного hex-идентификатора. Нужно, чтобы
+ * восемь символов из разорванного полного кода не принимались за «код
+ * компьютера»: base32-алфавит почти целиком совпадает с hex-символами.
+ */
+function insideHexRun(text, index, length) {
+  const hex = /[0-9a-fA-F]/;
+  const step = /[0-9a-fA-F \t\r\n-]/;
+  let start = index;
+  let end = index + length;
+  while (start > 0 && step.test(text[start - 1])) start -= 1;
+  while (start < index && !hex.test(text[start])) start += 1;
+  while (end < text.length && step.test(text[end])) end += 1;
+  while (end > index + length && !hex.test(text[end - 1])) end -= 1;
+  return text.slice(start, end).replace(/[^0-9a-fA-F]/g, "").length >= FULL_HEX_LENGTH / 2;
+}
+
 /** Принадлежит ли найденный фрагмент более длинному токену (код активации, hex-идентификатор). */
 function insideLongToken(text, index, length) {
   const pattern = /[0-9A-Za-z-]/;
@@ -64,9 +102,16 @@ function clean(value) {
 function tryResolve(text) {
   const candidate = clean(text).replace(/^[«"'`]+|[«"'`.]+$/g, "");
   if (!candidate) return null;
+  // Сначала пробуем склеить hex-символы: разорванный переносом полный
+  // идентификатор — частый случай, и он точнее короткого кода.
+  const loose = longestHexRun(candidate);
+  if (loose.length === FULL_HEX_LENGTH) {
+    const fromHex = core.resolveBindTarget(loose);
+    if (fromHex.ok) return { shortId: fromHex.shortId, source: "full" };
+  }
   const resolved = core.resolveBindTarget(candidate);
   if (!resolved.ok) return null;
-  return { shortId: resolved.shortId, source: candidate.replace(/[^0-9a-fA-F]/g, "").length === 64 ? "full" : "short" };
+  return { shortId: resolved.shortId, source: candidate.replace(/[^0-9a-fA-F]/g, "").length === FULL_HEX_LENGTH ? "full" : "short" };
 }
 
 function labeledMatch(text, labels) {
@@ -130,11 +175,21 @@ export function parseActivationRequest(input) {
     // на «соседей»: если вокруг непрерывная цепочка букв/цифр/дефисов длиннее
     // 20 символов — это кусок более длинного токена, а не код компьютера.
     if (insideLongToken(text, match.index ?? 0, match[0].length)) continue;
+    if (insideHexRun(text, match.index ?? 0, match[0].length)) continue;
     addCandidate(tryResolve(match[0]), "похожий на код компьютера фрагмент");
   }
   for (const match of text.matchAll(HEX64)) {
     addCandidate(tryResolve(match[0]), "полный идентификатор в тексте");
     if (!result.machineId) result.machineId = match[0].toLowerCase();
+  }
+  // Полный идентификатор мог прийти с переносами внутри — тогда HEX64 его не
+  // видит. Собираем hex-символы в одну строку и проверяем длину.
+  if (!result.machineId) {
+    const loose = longestHexRun(text);
+    if (loose.length === FULL_HEX_LENGTH) {
+      result.machineId = loose;
+      addCandidate(tryResolve(loose), "полный идентификатор без переносов");
+    }
   }
 
   if (!result.candidates.length) {

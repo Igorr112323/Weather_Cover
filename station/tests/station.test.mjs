@@ -155,6 +155,37 @@ describe("разбор того, что прислал пользователь"
     assert.equal(parsed.pretty, core.prettyShortId(FULL(machineId)));
   });
 
+  it("полный идентификатор с переносами и пробелами внутри", () => {
+    // Мессенджер и узкое поле режут длинные строки: 64 hex приходят в две строки
+    // или разбитыми пробелами — «64 hex подряд» в таком тексте нет.
+    const machineId = "1c722cc7bfe23bfae5f2ba334bc6c420d76caed935cb65ff71b4d9c1f0e8bc78";
+    const wanted = core.prettyShortId(core.machineShortId(machineId));
+    const forms = [
+      `S5HX-XRMK\n(${machineId})`,
+      `(${machineId.slice(0, 40)}\n${machineId.slice(40)})`,
+      machineId.replace(/(.{8})/g, "$1 ").trim(),
+      machineId.match(/.{1,16}/g).join("-"),
+      `Код компьютера: S5HX-XRMK\n${machineId.slice(0, 32)} ${machineId.slice(32)}`,
+      machineId,
+    ];
+    for (const form of forms) {
+      const parsed = parseActivationRequest(form);
+      assert.equal(parsed.ok, true, `не разобран вид «${form.slice(0, 28)}…»`);
+      assert.equal(parsed.pretty, wanted, `идентификатор определён неверно: ${form.slice(0, 28)}`);
+      assert.equal(parsed.machineId, machineId, `полный идентификатор не сохранён: ${form.slice(0, 28)}`);
+    }
+  });
+
+  it("обрывок hex не принимается за код компьютера", () => {
+    // Восемь символов из длинного hex — не код компьютера: иначе страница выдала бы
+    // код для несуществующей машины и молча.
+    const machineId = "ab".repeat(32);
+    const parsed = parseActivationRequest(`Вот: ${machineId.slice(0, 20)} ${machineId.slice(20)}`);
+    assert.equal(parsed.ok, true, parsed.message);
+    assert.equal(parsed.candidates.length, 1, `лишние кандидаты: ${JSON.stringify(parsed.candidates)}`);
+    assert.equal(parsed.pretty, core.prettyShortId(core.machineShortId(machineId)));
+  });
+
   it("мусор и пустой ввод — честный отказ", () => {
     assert.equal(parseActivationRequest("").ok, false);
     assert.equal(parseActivationRequest("купил вашу программу, пришлите код").ok, false);

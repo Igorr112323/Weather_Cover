@@ -185,6 +185,35 @@ describe("личная страница выдаёт код, который пр
     dom.close();
   });
 
+  it("код компьютера вместо ключа — сказано, куда его на самом деле", async () => {
+    // Реальный случай: в поле ключа оказалась 64-символьная hex-строка (её
+    // скопировали из подсказки про контрольную сумму файла).
+    const dom = fakePage(PAGE_SCRIPT());
+    dom.set("key", "603afb3b95a53615ea5f0967fd2aaa421a11687dfa86c6a404f1d3c07244cf1e");
+    await dom.click("saveKey");
+    const msg = dom.get("msg").textContent;
+    assert.match(msg, /шестнадцатеричн|код компьютера|контрольн/i, msg);
+    assert.match(msg, /верхн|заявк|не закрытый ключ/i, `не сказано, что это не ключ: ${msg}`);
+    assert.equal(dom.get("out").value, "", "код выдавать нечем");
+    assert.equal(dom.storage.get("agro.personal.secret") ?? "", "", "такое нельзя сохранять как ключ");
+    dom.close();
+  });
+
+  it("разорванный переносом полный идентификатор разбирается", async () => {
+    const dom = fakePage(PAGE_SCRIPT());
+    dom.storage.set("agro.personal.keys", JSON.stringify({ keys: TEST_KEYS, revokedSerials: [] }));
+    dom.set("key", JSON.stringify({ keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 }));
+    await dom.click("saveKey");
+    const hex = MACHINE_HEX;
+    dom.set("src", `S5HX-XRMK\n(${hex.slice(0, 40)}\n${hex.slice(40)})`);
+    await dom.click("go");
+    const code = dom.get("out").value;
+    assert.match(code, /^AGRO-/, `не выдан код: ${dom.get("msg").textContent}`);
+    const check = core.verifyCode({ code, keys: TEST_KEYS, machineShortId: SHORT });
+    assert.equal(check.ok, true, `привязка не совпала с полным идентификатором: ${JSON.stringify(check)}`);
+    dom.close();
+  });
+
   it("ключ вставляется и целиком файлом, и одной строкой privateKey", async () => {
     const entry = JSON.stringify({ keyId: 1, privateKey: PKCS8_B64, publicKey: SPKI_B64 });
     for (const pasted of [entry, PKCS8_B64, `  ${entry}\n\n`]) {

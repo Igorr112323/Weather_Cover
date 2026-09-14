@@ -101,7 +101,7 @@
       <p class="msg" id="msg"></p>
 
       <section class="keybox" id="keybox" hidden>
-        <label class="lbl" for="key">Закрытый ключ приложения — содержимое secrets/license-key.json или одна строка MC4CAQAw… (нужен один раз)</label>
+        <label class="lbl" for="key">Закрытый ключ приложения — содержимое license-key.json или строка privateKey из него (нужен один раз)</label>
         <textarea id="key" rows="3" spellcheck="false"></textarea>
         <div class="row">
           <button id="saveKey" type="button">Сохранить на этом ПК</button>
@@ -942,6 +942,31 @@
         /^([А-ЯЁA-Z][а-яёa-z]{2,}(?:\s+[А-ЯЁA-Z][а-яёa-z]{2,})?)\s*[,!]/,
       ];
 
+      const FULL_HEX_LENGTH = 64;
+
+      const HEX_LOOSE = /[0-9a-fA-F][0-9a-fA-F \t\r\n-]*[0-9a-fA-F]/g;
+
+      function longestHexRun(text) {
+        let best = "";
+        for (const match of String(text ?? "").matchAll(HEX_LOOSE)) {
+          const compact = match[0].replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+          if (compact.length > best.length) best = compact;
+        }
+        return best;
+      }
+
+      function insideHexRun(text, index, length) {
+        const hex = /[0-9a-fA-F]/;
+        const step = /[0-9a-fA-F \t\r\n-]/;
+        let start = index;
+        let end = index + length;
+        while (start > 0 && step.test(text[start - 1])) start -= 1;
+        while (start < index && !hex.test(text[start])) start += 1;
+        while (end < text.length && step.test(text[end])) end += 1;
+        while (end > index + length && !hex.test(text[end - 1])) end -= 1;
+        return text.slice(start, end).replace(/[^0-9a-fA-F]/g, "").length >= FULL_HEX_LENGTH / 2;
+      }
+
       function insideLongToken(text, index, length) {
         const pattern = /[0-9A-Za-z-]/;
         let start = index;
@@ -958,9 +983,16 @@
       function tryResolve(text) {
         const candidate = clean(text).replace(/^[«"'`]+|[«"'`.]+$/g, "");
         if (!candidate) return null;
+        // Сначала пробуем склеить hex-символы: разорванный переносом полный
+        // идентификатор — частый случай, и он точнее короткого кода.
+        const loose = longestHexRun(candidate);
+        if (loose.length === FULL_HEX_LENGTH) {
+          const fromHex = core.resolveBindTarget(loose);
+          if (fromHex.ok) return { shortId: fromHex.shortId, source: "full" };
+        }
         const resolved = core.resolveBindTarget(candidate);
         if (!resolved.ok) return null;
-        return { shortId: resolved.shortId, source: candidate.replace(/[^0-9a-fA-F]/g, "").length === 64 ? "full" : "short" };
+        return { shortId: resolved.shortId, source: candidate.replace(/[^0-9a-fA-F]/g, "").length === FULL_HEX_LENGTH ? "full" : "short" };
       }
 
       function labeledMatch(text, labels) {
@@ -1018,11 +1050,21 @@
           // на «соседей»: если вокруг непрерывная цепочка букв/цифр/дефисов длиннее
           // 20 символов — это кусок более длинного токена, а не код компьютера.
           if (insideLongToken(text, match.index ?? 0, match[0].length)) continue;
+          if (insideHexRun(text, match.index ?? 0, match[0].length)) continue;
           addCandidate(tryResolve(match[0]), "похожий на код компьютера фрагмент");
         }
         for (const match of text.matchAll(HEX64)) {
           addCandidate(tryResolve(match[0]), "полный идентификатор в тексте");
           if (!result.machineId) result.machineId = match[0].toLowerCase();
+        }
+        // Полный идентификатор мог прийти с переносами внутри — тогда HEX64 его не
+        // видит. Собираем hex-символы в одну строку и проверяем длину.
+        if (!result.machineId) {
+          const loose = longestHexRun(text);
+          if (loose.length === FULL_HEX_LENGTH) {
+            result.machineId = loose;
+            addCandidate(tryResolve(loose), "полный идентификатор без переносов");
+          }
         }
 
         if (!result.candidates.length) {
@@ -1955,25 +1997,42 @@
         if (/[«»"'`.,;:]/.test(flat)) return "в строке есть кавычки или точки — нужен сам ключ, без оформления";
         if (!/^[A-Za-z0-9+/=]+$/.test(flat)) return "в строке есть символы вне base64 (разрешены A–Z, a–z, 0–9, +, /, =)";
         if (flat.length < 60) return `ключ короткий: ${flat.length} символов, нужно 64 или больше`;
+        if (/^[0-9a-f]{64}$/i.test(flat) || /^[0-9a-f]{8}-[0-9a-f]{24,}$/i.test(flat)) {
+          return "это шестнадцатеричная строка — похоже на код компьютера или контрольную сумму файла. Код компьютера вставляют в ВЕРХНЕЕ поле, здесь нужен закрытый ключ";
+        }
+        if (/^AGRO-/i.test(flat.replace(/[^0-9A-Za-z-]/g, ""))) return "это код активации для покупателя, а не закрытый ключ";
+        if (!flat.startsWith("MC4CAQAw")) return "закрытый ключ Ed25519 в PKCS#8 начинается с MC4CAQAw — здесь другое начало";
         return "";
       }
 
       /** Закрытый ключ: вшитый при сборке, иначе введённый в этом браузере. */
-      function secret() {
-        const raw = read(STORE.secret).trim() || BAKED_SECRET.trim();
-        if (!raw) return null;
+      /** Разбор одного текста: весь JSON из license-key.json или голая строка privateKey. */
+      function parseSecret(raw) {
+        const text = String(raw ?? "").trim();
+        if (!text) return null;
         try {
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(text);
           const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
           const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
           if (found.length) {
             const last = found[found.length - 1];
-            const problem = keyProblem(last.privateKey);
-            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "", problem };
+            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "", problem: keyProblem(last.privateKey) };
           }
           if (parsed && typeof parsed === "object" && "privateKey" in parsed) return { keyId: 1, privateKeyBase64: "", publicKey: "", problem: keyProblem(parsed.privateKey) };
         } catch { /* не JSON — значит вставили base64 */ }
-        return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "", problem: keyProblem(raw) };
+        return { keyId: 1, privateKeyBase64: text.replace(/\s/g, ""), publicKey: "", problem: keyProblem(text) };
+      }
+
+      /**
+       * Ключ: тот, что вставлен в этом браузере; если в нём ерунда — вшитый в
+       * файл. Так случайная вставка не в то поле не ломает страницу навсегда.
+       */
+      function secret() {
+        const stored = parseSecret(read(STORE.secret));
+        if (stored && !stored.problem) return stored;
+        const baked = parseSecret(BAKED_SECRET);
+        if (baked && !baked.problem) return baked;
+        return stored ?? baked;
       }
 
       const CRYPTO_HINT =
@@ -1998,12 +2057,21 @@
       }
 
       function renderKeyState() {
-        const loaded = Boolean(secret());
+        const stored = parseSecret(read(STORE.secret));
+        const entry = secret();
+        const broken = Boolean(stored?.problem) && Boolean(entry?.problem);
+        const loaded = Boolean(entry) && !entry.problem;
         const baked = Boolean(BAKED_SECRET.trim());
         $("bakedNote").hidden = !baked;
-        $("keybox").hidden = loaded;
+        $("keybox").hidden = loaded || baked;
         $("keysLink").hidden = false;
-        $("keysLink").textContent = baked ? "ключ вшит в файл — заменить" : loaded ? "ключ загружен — заменить" : "ключ не загружен — вставить";
+        $("keysLink").textContent = baked
+          ? "ключ вшит в файл — заменить"
+          : broken
+            ? "ключ не читается — заменить"
+            : loaded
+              ? "ключ загружен — заменить"
+              : "ключ не загружен — вставить";
         return loaded;
       }
 
@@ -2058,7 +2126,7 @@
         if (!publicKey) {
           const proof = await AGRO.matchKey({ privateKeyBase64: keys.privateKeyBase64, keys: config.keys });
           if (!proof.ok) {
-            note(`Ключ не принят: ${proof.message ?? "подпись не совпала"}. Похоже, это закрытый ключ от другого набора.`, true);
+            note(`Ключ не принят: ${proof.message ?? "подпись не совпала"} Если вставлена не строка privateKey из license-key.json, код выдать нечем.`, true);
             return;
           }
           keyId = Number(proof.keyId) || keyId;
@@ -2138,18 +2206,18 @@
           note("Поле с ключом пустое.", true);
           return;
         }
+        // Проверяем именно вставленный текст, а не «эффективный» ключ: с вшитым
+        // в файл ключом иначе получилось бы, что мусор принят и сохранён.
+        const parsed = parseSecret(raw);
+        if (!parsed) {
+          note("Не похоже на ключ: нужен JSON из license-key.json целиком или строка privateKey из него.", true);
+          return;
+        }
+        if (parsed.problem) {
+          note(`Ключ не сохранён: ${parsed.problem}.`, true);
+          return;
+        }
         write(STORE.secret, raw);
-        const stored = secret();
-        if (!stored) {
-          forget(STORE.secret);
-          note("Не похоже на ключ: нужен JSON из secrets/license-key.json или строка privateKey (начинается с MC4CAQAw).", true);
-          return;
-        }
-        if (stored.problem) {
-          forget(STORE.secret);
-          note(`Ключ не сохранён: ${stored.problem}.`, true);
-          return;
-        }
         $("key").value = "";
         renderKeyState();
         note("Ключ сохранён в этом браузере.");
@@ -2178,7 +2246,9 @@
       });
 
       void cryptoCheck();
-      if (!renderKeyState()) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
+      const storedProblem = parseSecret(read(STORE.secret))?.problem ?? "";
+      if (storedProblem && secret()?.problem) note(`В сохранённом ключе не то: ${storedProblem}. Вставьте закрытый ключ заново.`, true);
+      if (!renderKeyState() && !storedProblem) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
       else $("src").focus();
     </script>
   </body>

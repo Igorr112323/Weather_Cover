@@ -101,7 +101,7 @@
       <p class="msg" id="msg"></p>
 
       <section class="keybox" id="keybox" hidden>
-        <label class="lbl" for="key">Закрытый ключ приложения — содержимое secrets/license-key.json или одна строка MC4CAQAw… (нужен один раз)</label>
+        <label class="lbl" for="key">Закрытый ключ приложения — содержимое license-key.json или строка privateKey из него (нужен один раз)</label>
         <textarea id="key" rows="3" spellcheck="false"></textarea>
         <div class="row">
           <button id="saveKey" type="button">Сохранить на этом ПК</button>
@@ -170,25 +170,42 @@
         if (/[«»"'`.,;:]/.test(flat)) return "в строке есть кавычки или точки — нужен сам ключ, без оформления";
         if (!/^[A-Za-z0-9+/=]+$/.test(flat)) return "в строке есть символы вне base64 (разрешены A–Z, a–z, 0–9, +, /, =)";
         if (flat.length < 60) return `ключ короткий: ${flat.length} символов, нужно 64 или больше`;
+        if (/^[0-9a-f]{64}$/i.test(flat) || /^[0-9a-f]{8}-[0-9a-f]{24,}$/i.test(flat)) {
+          return "это шестнадцатеричная строка — похоже на код компьютера или контрольную сумму файла. Код компьютера вставляют в ВЕРХНЕЕ поле, здесь нужен закрытый ключ";
+        }
+        if (/^AGRO-/i.test(flat.replace(/[^0-9A-Za-z-]/g, ""))) return "это код активации для покупателя, а не закрытый ключ";
+        if (!flat.startsWith("MC4CAQAw")) return "закрытый ключ Ed25519 в PKCS#8 начинается с MC4CAQAw — здесь другое начало";
         return "";
       }
 
       /** Закрытый ключ: вшитый при сборке, иначе введённый в этом браузере. */
-      function secret() {
-        const raw = read(STORE.secret).trim() || BAKED_SECRET.trim();
-        if (!raw) return null;
+      /** Разбор одного текста: весь JSON из license-key.json или голая строка privateKey. */
+      function parseSecret(raw) {
+        const text = String(raw ?? "").trim();
+        if (!text) return null;
         try {
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(text);
           const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
           const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
           if (found.length) {
             const last = found[found.length - 1];
-            const problem = keyProblem(last.privateKey);
-            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "", problem };
+            return { keyId: Number(last.keyId) || 1, privateKeyBase64: last.privateKey, publicKey: last.publicKey ?? "", problem: keyProblem(last.privateKey) };
           }
           if (parsed && typeof parsed === "object" && "privateKey" in parsed) return { keyId: 1, privateKeyBase64: "", publicKey: "", problem: keyProblem(parsed.privateKey) };
         } catch { /* не JSON — значит вставили base64 */ }
-        return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "", problem: keyProblem(raw) };
+        return { keyId: 1, privateKeyBase64: text.replace(/\s/g, ""), publicKey: "", problem: keyProblem(text) };
+      }
+
+      /**
+       * Ключ: тот, что вставлен в этом браузере; если в нём ерунда — вшитый в
+       * файл. Так случайная вставка не в то поле не ломает страницу навсегда.
+       */
+      function secret() {
+        const stored = parseSecret(read(STORE.secret));
+        if (stored && !stored.problem) return stored;
+        const baked = parseSecret(BAKED_SECRET);
+        if (baked && !baked.problem) return baked;
+        return stored ?? baked;
       }
 
       const CRYPTO_HINT =
@@ -213,12 +230,21 @@
       }
 
       function renderKeyState() {
-        const loaded = Boolean(secret());
+        const stored = parseSecret(read(STORE.secret));
+        const entry = secret();
+        const broken = Boolean(stored?.problem) && Boolean(entry?.problem);
+        const loaded = Boolean(entry) && !entry.problem;
         const baked = Boolean(BAKED_SECRET.trim());
         $("bakedNote").hidden = !baked;
-        $("keybox").hidden = loaded;
+        $("keybox").hidden = loaded || baked;
         $("keysLink").hidden = false;
-        $("keysLink").textContent = baked ? "ключ вшит в файл — заменить" : loaded ? "ключ загружен — заменить" : "ключ не загружен — вставить";
+        $("keysLink").textContent = baked
+          ? "ключ вшит в файл — заменить"
+          : broken
+            ? "ключ не читается — заменить"
+            : loaded
+              ? "ключ загружен — заменить"
+              : "ключ не загружен — вставить";
         return loaded;
       }
 
@@ -273,7 +299,7 @@
         if (!publicKey) {
           const proof = await AGRO.matchKey({ privateKeyBase64: keys.privateKeyBase64, keys: config.keys });
           if (!proof.ok) {
-            note(`Ключ не принят: ${proof.message ?? "подпись не совпала"}. Похоже, это закрытый ключ от другого набора.`, true);
+            note(`Ключ не принят: ${proof.message ?? "подпись не совпала"} Если вставлена не строка privateKey из license-key.json, код выдать нечем.`, true);
             return;
           }
           keyId = Number(proof.keyId) || keyId;
@@ -353,18 +379,18 @@
           note("Поле с ключом пустое.", true);
           return;
         }
+        // Проверяем именно вставленный текст, а не «эффективный» ключ: с вшитым
+        // в файл ключом иначе получилось бы, что мусор принят и сохранён.
+        const parsed = parseSecret(raw);
+        if (!parsed) {
+          note("Не похоже на ключ: нужен JSON из license-key.json целиком или строка privateKey из него.", true);
+          return;
+        }
+        if (parsed.problem) {
+          note(`Ключ не сохранён: ${parsed.problem}.`, true);
+          return;
+        }
         write(STORE.secret, raw);
-        const stored = secret();
-        if (!stored) {
-          forget(STORE.secret);
-          note("Не похоже на ключ: нужен JSON из secrets/license-key.json или строка privateKey (начинается с MC4CAQAw).", true);
-          return;
-        }
-        if (stored.problem) {
-          forget(STORE.secret);
-          note(`Ключ не сохранён: ${stored.problem}.`, true);
-          return;
-        }
         $("key").value = "";
         renderKeyState();
         note("Ключ сохранён в этом браузере.");
@@ -393,7 +419,9 @@
       });
 
       void cryptoCheck();
-      if (!renderKeyState()) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
+      const storedProblem = parseSecret(read(STORE.secret))?.problem ?? "";
+      if (storedProblem && secret()?.problem) note(`В сохранённом ключе не то: ${storedProblem}. Вставьте закрытый ключ заново.`, true);
+      if (!renderKeyState() && !storedProblem) note("Вставьте закрытый ключ: содержимое license-key.json целиком или строку privateKey из него (64 символа, начинается с MC4CAQAw).");
       else $("src").focus();
     </script>
   </body>
