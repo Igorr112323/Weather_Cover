@@ -73,14 +73,21 @@ jobs:
       # Обе автономные страницы (станция выдачи и личная страница кодов) собираются
       # из кода приложения: устаревший файл = покупатель получил бы код, который
       # EXE не примет. Поэтому проверка актуальности и тесты — до сборки релиза.
-      - name: Автономные страницы (станция и личная)
+      # Три отдельных шага, а не один: логи Actions из этой песочницы не读ются
+      # ( blob-хост недоступен), поэтому по имени покрасневшего шага сразу видно,
+      # что именно разошлось — копии кода, актуальность страниц или их тесты.
+      - name: "Страницы: копии кода приложения (vendor)"
+        run: node station/scripts/sync-vendor.mjs --check --repo .
+
+      - name: "Страницы: актуальность сборки (standalone + personal)"
+        run: node station/scripts/build-standalone.mjs --check
+
+      - name: "Страницы: тесты выдачи и проверки кода"
         run: |
           set -o pipefail
-          node station/scripts/sync-vendor.mjs --check --repo .
-          node station/scripts/build-standalone.mjs --check
           if ! node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs 2>&1 | tee ci-logs/station.log; then
             echo "===== ПАДАЮЩИЕ ТЕСТЫ СТРАНИЦ (выжимка) ====="
-            grep -E "^ *not ok|error: |AssertionError" ci-logs/station.log | tail -40
+            grep -E "^ *not ok|error: |AssertionError|mismatch" ci-logs/station.log | tail -40
             exit 1
           fi
 
