@@ -1,0 +1,2490 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Активация ключей — АгроПрогноз — Кукуруза</title>
+    <style>
+      :root {
+        --bg: #f4f7f2;
+        --panel: #fff;
+        --ink: #17251c;
+        --muted: #5d6f62;
+        --line: #d8e2d8;
+        --accent: #1f6f43;
+        --accent-soft: #e7f3ea;
+        --warn: #a35a12;
+        --bad: #a4271f;
+        --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      }
+      header {
+        display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+        padding: 16px 22px; background: var(--panel); border-bottom: 1px solid var(--line);
+      }
+      .brand { display: flex; gap: 12px; align-items: center; }
+      .logo {
+        display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px;
+        background: var(--accent); color: #fff; font: 700 12px/1 var(--mono);
+      }
+      h1 { margin: 0; font-size: 18px; }
+      .sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid var(--line);
+        border-radius: 999px; font-size: 12.5px; color: var(--muted); background: #fbfdfb;
+      }
+      .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+      .chip.ok i { background: var(--accent); }
+      .chip.bad i { background: var(--bad); }
+      .chip b { color: var(--ink); }
+      nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 22px 0; }
+      .tab {
+        padding: 9px 13px; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0;
+        background: #eaf0e9; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
+      }
+      .tab.is-active { background: var(--panel); color: var(--accent); }
+      main { padding: 0 22px 26px; }
+      section {
+        display: none; padding: 18px; border: 1px solid var(--line);
+        border-radius: 0 12px 12px 12px; background: var(--panel);
+      }
+      section.is-active { display: block; }
+      h2 { margin: 0 0 8px; font-size: 15px; }
+      h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
+      p, li { font-size: 14px; }
+      .hint { color: var(--muted); font-size: 13px; margin: 6px 0; }
+      .bad-text { color: var(--bad); }
+      .warn-box {
+        padding: 9px 11px; border-left: 3px solid var(--warn); background: #fff8ee;
+        color: var(--warn); border-radius: 0 8px 8px 0; font-size: 13px; margin: 8px 0;
+      }
+      .field { display: block; margin-bottom: 11px; }
+      .field > span { display: block; margin-bottom: 5px; font-size: 12.5px; color: var(--muted); }
+      textarea, input, select {
+        width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px;
+        background: #fbfdfb; color: var(--ink); font: inherit;
+      }
+      textarea { font-family: var(--mono); font-size: 13px; resize: vertical; }
+      .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+      .fields { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .btn {
+        padding: 9px 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+        font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
+      }
+      .btn:hover { border-color: var(--accent); color: var(--accent); }
+      .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .btn.warn { background: #fff6ea; border-color: #e6c48f; color: var(--warn); }
+      .btn.tiny { padding: 5px 9px; font-size: 12.5px; }
+      .code {
+        display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px dashed var(--accent);
+        border-radius: 10px; background: var(--accent-soft); margin: 0 0 12px;
+      }
+      .code code {
+        flex: 1 1 auto; font-family: var(--mono); font-size: 13px; line-height: 1.7;
+        white-space: pre-wrap; word-break: break-all;
+      }
+      .kv { display: grid; gap: 4px 12px; grid-template-columns: max-content 1fr; margin: 0 0 12px; font-size: 13.5px; }
+      .kv dt { color: var(--muted); }
+      .kv dd { margin: 0; }
+      pre {
+        margin: 8px 0; padding: 10px; border-radius: 9px; background: #f2f6f1;
+        font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; overflow-x: auto;
+      }
+      .cmd { border-left: 3px solid var(--accent); }
+      .box { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdfb; margin: 10px 0; overflow-wrap: anywhere; }
+      .box.is-error { border-color: #e6b6b1; background: #fdf6f5; }
+      .mono { font-family: var(--mono); }
+      .table { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { background: #f4f8f3; color: var(--muted); font-size: 11.5px; text-transform: uppercase; }
+      details { margin: 8px 0; }
+      summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+      .toast {
+        position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 11px 16px;
+        border-radius: 10px; background: var(--ink); color: #fff; font-size: 13px; box-shadow: 0 8px 30px rgba(0,0,0,.24);
+      }
+      .toast[hidden] { display: none; }
+      ol.steps { padding-left: 20px; }
+      ol.steps > li { margin-bottom: 10px; }
+      .grid2 { display: grid; gap: 16px; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); }
+      @media (max-width: 940px) { .grid2 { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="logo">AKE</span>
+        <div>
+          <h1>Активация ключей</h1>
+          <p class="sub">
+            Работает офлайн прямо в браузере: закрытый ключ никуда не отправляется, подписывает код этот файл.
+            Лицензии бессрочные — поля «действует до» не существует.
+          </p>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </header>
+
+    <nav id="tabs">
+      <button class="tab is-active" data-tab="issue">1. Заявка → код</button>
+      <button class="tab" data-tab="exe">2. EXE и проверка активации</button>
+      <button class="tab" data-tab="verify">Проверка кода</button>
+      <button class="tab" data-tab="ledger">Журнал</button>
+      <button class="tab" data-tab="keys">Ключи</button>
+    </nav>
+
+    <main>
+      <!-- 1. ВЫДАЧА -->
+      <section class="is-active" id="tab-issue">
+        <div class="grid2">
+          <div>
+            <h2>Что прислал пользователь</h2>
+            <label class="field">
+              <span>Текст заявки, сообщение в мессенджере или содержимое файла .agrorequest — можно вставить как есть</span>
+              <textarea id="requestText" rows="8" placeholder="Заявка на персональный код активации&#10;Приложение: АгроПрогноз — Кукуруза 0.2.1&#10;Код компьютера: ZZG5-9ZKT&#10;Меня зовут Иван, +7 960 484-34-63"></textarea>
+            </label>
+            <div class="row">
+              <button class="btn" id="parse">Разобрать заявку</button>
+              <input id="machineCode" class="mono" placeholder="или введите код компьютера: ZZG5-9ZKT / 64-символьный id" />
+            </div>
+            <div class="hint" id="parseResult"></div>
+
+            <div class="fields">
+              <label class="field"><span>Имя покупателя</span><input id="name" placeholder="Иван" /></label>
+              <label class="field"><span>Телефон</span><input id="phone" placeholder="+7 960 484-34-63" /></label>
+              <label class="field"><span>Почта</span><input id="email" placeholder="buyer@mail.ru" /></label>
+              <label class="field"><span>Пометка</span><input id="note" placeholder="заказ №14" /></label>
+            </div>
+            <label class="row"><input type="checkbox" id="universal" style="width:auto" /> Универсальный код (на любом компьютере — нужен только в исключительных случаях)</label>
+            <div class="row">
+              <button class="btn primary" id="issue">Получить код активации</button>
+              <button class="btn tiny" id="reset-form">Очистить</button>
+            </div>
+            <div class="hint" id="issueHint"></div>
+          </div>
+          <div>
+            <h2>Результат</h2>
+            <div class="box" id="result">Здесь появится код, сообщение покупателю и файл .agrolic. Нужен закрытый ключ — вкладка «Ключи».</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. EXE -->
+      <section id="tab-exe">
+        <h2>EXE, который запрашивает код активации</h2>
+        <ol class="steps">
+          <li>Скачай установочный файл (это официальный portable EXE, установка не нужна):
+            <div class="row"><a class="btn primary" id="exeLink" href="#" target="_blank" rel="noreferrer">Скачать AgroPrognoz-portable.exe</a></div>
+            <label class="field"><span>Ссылка на EXE (можно поменять на свой релиз или на собранный CI проверочный файл)</span>
+              <input id="exeUrl" class="mono" /></label>
+          </li>
+          <li>
+            <b>Если ты запускаешь EXE на компьютере, где активация уже была</b> — файл лицензии один на все копии программы,
+            поэтому код он не спросит. Чтобы увидеть экран ввода кода, выполни в cmd:
+            <pre class="cmd">move "%APPDATA%\AgroPrognoz\agroprognoz.license" "%APPDATA%\AgroPrognoz\agroprognoz.license.bak"</pre>
+            Вернуть как было: <span class="mono">move</span> обратно (переименовать <span class="mono">.bak</span> в <span class="mono">agroprognoz.license</span>).
+          </li>
+          <li>
+            Проверочный режим (каждая новая копия спрашивает код, твоя активация не трогается) работает в сборках, где есть
+            <span class="mono">electron/license/checkmode.cjs</span>. Собери такую копию сам или переименуй EXE:
+            <pre class="cmd">copy release\AgroPrognoz-0.2.1-portable.exe release\AgroPrognoz-check-demo.exe
+release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
+            <div class="hint" id="checkNote"></div>
+          </li>
+        </ol>
+        <div class="row">
+          <button class="btn tiny" id="makeCheckName">Скопировать имя проверочного файла</button>
+          <button class="btn tiny" id="copyReset">Скопировать команду сброса</button>
+        </div>
+      </section>
+
+      <!-- 3. ПРОВЕРКА -->
+      <section id="tab-verify">
+        <div class="grid2">
+          <div>
+            <h2>Проверить код активации</h2>
+            <label class="field"><span>Код (можно вместе с письмом — лишний текст будет пропущен)</span>
+              <textarea id="codeText" rows="6" class="mono" placeholder="AGRO-XXXXXXXX-XXXXXXXX-…"></textarea></label>
+            <div class="row">
+              <input id="verifyMachine" class="mono" placeholder="код компьютера для сверки привязки (необязательно)" />
+              <button class="btn primary" id="verify">Проверить</button>
+            </div>
+            <p class="hint">Проверка идёт тем же алгоритмом, что и в приложении: подпись Ed25519, продукт, список отзыва, отпечаток компьютера. Дат станция не читает — лицензия бессрочная.</p>
+          </div>
+          <div><div class="box" id="verifyResult">Результат проверки.</div></div>
+        </div>
+      </section>
+
+      <!-- 4. ЖУРНАЛ -->
+      <section id="tab-ledger">
+        <div class="row">
+          <input id="ledgerSearch" placeholder="Поиск: имя, телефон, серийник, код компьютера…" style="max-width:420px" />
+          <button class="btn tiny" id="ledgerRefresh">Обновить</button>
+          <button class="btn tiny" id="ledgerCsv">Скачать CSV</button>
+          <button class="btn tiny warn" id="ledgerClear">Очистить журнал</button>
+        </div>
+        <div class="hint">
+          Журнал хранится в этом браузере (localStorage) — это учёт выдачи. Чтобы он попадал в общий
+          <span class="mono">secrets/ledger.csv</span> проекта, используй студию/станцию:
+          <span class="mono">npm run license:studio</span> или <span class="mono">npm run station</span>.
+        </div>
+        <div class="table" id="ledger"></div>
+      </section>
+
+      <!-- 5. КЛЮЧИ -->
+      <section id="tab-keys">
+        <div class="grid2">
+          <div>
+            <h2>Закрытый ключ (для выдачи кодов)</h2>
+            <p class="hint">
+              Вставь содержимое <span class="mono">secrets/license-key.json</span> из проекта приложения — или одну строку base64
+              из поля <span class="mono">privateKey</span>. Ключ останется в этом браузере (localStorage) и никуда не уйдёт:
+              страница работает без сервера и без интернета. Секретные каталоги в git не попадают.
+            </p>
+            <label class="field"><span>Закрытый ключ</span>
+              <textarea id="privateKey" rows="4" class="mono" placeholder='{"keys":[{"keyId":1,"privateKey":"MC4CAQAw…"}]} или MC4CAQAw…'></textarea></label>
+            <div class="row">
+              <button class="btn primary" id="saveKey">Сохранить на этом ПК</button>
+              <button class="btn tiny warn" id="forgetKey">Забыть</button>
+            </div>
+            <div class="hint" id="keyHint"></div>
+          </div>
+          <div>
+            <h2>Открытый ключ приложения</h2>
+            <p class="hint">Открытый ключ лежит в самом приложении (<span class="mono">electron/license/keys.cjs</span>) — по нему станция сверяет, что код будет принят. Отзывы (серийники) тоже здесь.</p>
+            <label class="field"><span>JSON: {"keys":[{"keyId":1,"publicKey":"…"}],"revokedSerials":["…"]}</span>
+              <textarea id="publicKeys" rows="7" class="mono"></textarea></label>
+            <div class="row"><button class="btn tiny" id="savePub">Сохранить</button> <span class="hint" id="pubHint"></span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script>
+                  /**
+       * ══════════════════════════════════════════════════════════════════════════
+       * ЭТОТ БЛОК СОБРАН АВТОМАТИЧЕСКИ: node station/scripts/build-standalone.mjs
+       * Источник — electron/license/core.cjs (дословно), checkmode.cjs,
+       * license-shared.mjs, request.mjs, guard.cjs + шимы для браузера.
+       * Руками здесь править нельзя: правьте исходники проекта и пересоберите
+       * страницу (в CI есть проверка --check).
+       * ══════════════════════════════════════════════════════════════════════════
+       */
+      const AGRO_CORE = (() => {
+      /* ── шимы браузера (сгенерировано, не править руками) ──────────────────────
+       * Ядро лицензирования написано под Node: им нужны createHash/createHMAC,
+       * randomBytes, timingSafeEqual и Buffer. В браузере это даёт тот же результат:
+       * SHA-256 считается на чистом JS (синхронно — иначе ядро не работает),
+       * случайные байты берёт WebCrypto, сравнение байтов постоянное по времени.
+       */
+      const webcrypto = globalThis.crypto;
+      const te = new TextEncoder();
+
+      class Buf extends Uint8Array {
+        toString(encoding) {
+          if (encoding === "hex") return Array.from(this, (byte) => byte.toString(16).padStart(2, "0")).join("");
+          if (encoding === "base64") return btoa(String.fromCharCode(...this));
+          if (encoding === "utf8" || encoding === undefined) return new TextDecoder().decode(this);
+          throw new Error("Неизвестное кодирование: " + encoding);
+        }
+        static from(value, encoding) {
+          if (typeof value === "string") {
+            if (encoding === "base64") {
+              const binary = atob(value.replace(/\s+/g, ""));
+              const bytes = new Uint8Array(binary.length);
+              for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+              return new Buf(bytes);
+            }
+            return new Buf(te.encode(value));
+          }
+          if (value instanceof Uint8Array) return new Buf(value);
+          return new Buf(Uint8Array.from(value));
+        }
+        static alloc(size) { return new Buf(new Uint8Array(size)); }
+        static isBuffer(value) { return value instanceof Buf; }
+      }
+      const Buffer = Buf;
+
+      const SHA_K = new Uint32Array([1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298]);
+      const SHA_H0 = new Uint32Array([1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225]);
+
+      /** SHA-256 (FIPS 180-4). Тот же результат, что у crypto.createHash("sha256"). */
+      function sha256(message) {
+        const bytes = typeof message === "string" ? te.encode(message) : message;
+        const length = bytes.length;
+        const withPadding = new Uint8Array((((length + 9) >> 6) + 1) << 6);
+        withPadding.set(bytes);
+        withPadding[length] = 0x80;
+        const bits = length * 8;
+        const view = new DataView(withPadding.buffer);
+        view.setUint32(withPadding.length - 8, Math.floor(bits / 4294967296));
+        view.setUint32(withPadding.length - 4, bits >>> 0);
+
+        const h = SHA_H0.slice();
+        const w = new Uint32Array(64);
+        for (let offset = 0; offset < withPadding.length; offset += 64) {
+          for (let index = 0; index < 16; index += 1) w[index] = view.getUint32(offset + index * 4);
+          for (let index = 16; index < 64; index += 1) {
+            const s0 = rotr(w[index - 15], 7) ^ rotr(w[index - 15], 18) ^ (w[index - 15] >>> 3);
+            const s1 = rotr(w[index - 2], 17) ^ rotr(w[index - 2], 19) ^ (w[index - 2] >>> 10);
+            w[index] = (w[index - 16] + s0 + w[index - 7] + s1) >>> 0;
+          }
+          let [a, b, c, d, e, f, g, hh] = h;
+          for (let index = 0; index < 64; index += 1) {
+            const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+            const ch = (e & f) ^ (~e & g);
+            const temp1 = (hh + S1 + ch + SHA_K[index] + w[index]) >>> 0;
+            const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+            const maj = (a & b) ^ (a & c) ^ (b & c);
+            const temp2 = (S0 + maj) >>> 0;
+            hh = g; g = f; f = e; e = (d + temp1) >>> 0;
+            d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+          }
+          h[0] = (h[0] + a) >>> 0; h[1] = (h[1] + b) >>> 0; h[2] = (h[2] + c) >>> 0; h[3] = (h[3] + d) >>> 0;
+          h[4] = (h[4] + e) >>> 0; h[5] = (h[5] + f) >>> 0; h[6] = (h[6] + g) >>> 0; h[7] = (h[7] + hh) >>> 0;
+        }
+        const out = new Uint8Array(32);
+        const outView = new DataView(out.buffer);
+        for (let index = 0; index < 8; index += 1) outView.setUint32(index * 4, h[index]);
+        return out;
+      }
+      function rotr(value, bits) { return ((value >>> bits) | (value << (32 - bits))) >>> 0; }
+
+      function concatBytes(chunks) {
+        const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+        return out;
+      }
+
+      const crypto = {
+        createHash() {
+          const chunks = [];
+          return {
+            update(data) { chunks.push(typeof data === "string" ? te.encode(data) : new Uint8Array(data)); return this; },
+            digest() { return new Buf(sha256(concatBytes(chunks))); },
+          };
+        },
+        randomBytes(size) {
+          const bytes = new Uint8Array(size);
+          webcrypto.getRandomValues(bytes);
+          return new Buf(bytes);
+        },
+        timingSafeEqual(a, b) {
+          if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array) || a.byteLength !== b.byteLength) return false;
+          let diff = 0;
+          for (let index = 0; index < a.byteLength; index += 1) diff |= a[index] ^ b[index];
+          return diff === 0;
+        },
+        createPublicKey() {
+          throw new Error("Открытый ключ в браузере импортирует WebCrypto (glue.js), не Node.");
+        },
+        verify() {
+          throw new Error("Синхронная проверка подписи в браузере невозможна: используйте AGRO.verifyCode (он ждёт WebCrypto).");
+        },
+      };
+
+      /* vendored: точная копия electron/license/core.cjs из проекта Weather_Cover.
+       * Не править руками — обновлять скриптом scripts/sync-vendor.mjs. */
+      /**
+       * Ядро лицензирования. Только node:crypto — ни Electron, ни файловой системы,
+       * ни часов: модуль проверяется unit-тестами в обычном Node.
+       *
+       * ЛИЦЕНЗИЯ БЕССРОЧНАЯ. Это не «срок по умолчанию большой», а отсутствие срока
+       * как понятия: в коде активации нет поля даты, проверка не читает системное
+       * время, а решение «активировано / нет» зависит только от подписи и (если код
+       * персональный) от отпечатка компьютера. Перевод часов, подмена даты, «откат»
+       * времени — на лицензию не влияет, влиять просто не на что.
+       *
+       * Криптосхема: Ed25519 (RFC 8032). Код активации = полезная нагрузка (16 байт)
+       * + подпись (64 байта), вместе 80 байт; в тексте — 128 символов Crockford
+       * base32 (алфавит без I, L, O, U; регистр не важен, опечатки I/L/O исправляются).
+       * Закрытый ключ живёт только у владельца приложения (scripts/license-tool.mjs),
+       * в сборку попадает исключительно открытый ключ (electron/license/keys.cjs):
+       * выписать себе новый код из установленного приложения нельзя.
+       *
+       * Раскладка нагрузки (16 байт):
+       *   [0]      версия формата
+       *   [1]      идентификатор продукта
+       *   [2]      идентификатор ключа (ротация ключей без перевыпуска приложения)
+       *   [3]      флаги (бит 0 — код привязан к компьютеру)
+       *   [4..11]  серийный номер лицензии (8 байт, у каждой копии свой)
+       *   [12..15] отпечаток компьютера (4 байта; нули у непривязанных кодов)
+       */
+
+      /** Версия формата кода. Меняется только вместе с раскладкой нагрузки. */
+      const FORMAT_VERSION = 0x01;
+      /** Продукт «АгроПрогноз — Кукуруза»: код другого продукта не подойдёт. */
+      const PRODUCT_ID = 0x01;
+      const PRODUCT_NAME = "АгроПрогноз — Кукуруза";
+
+      const PAYLOAD_LENGTH = 16;
+      const SIGNATURE_LENGTH = 64;
+      /** 16 байт нагрузки + 64 байта подписи Ed25519. */
+      const LICENSE_LENGTH = PAYLOAD_LENGTH + SIGNATURE_LENGTH;
+      /** 80 байт = 640 бит = ровно 128 символов base32. */
+      const CODE_BODY_LENGTH = (LICENSE_LENGTH * 8) / 5;
+
+      const CODE_PREFIX = "AGRO";
+      /** Текст кода разбивается на группы по 8 символов — так его легче сверять. */
+      const GROUP_SIZE = 8;
+      const SERIAL_BYTES = 8;
+      const FINGERPRINT_BYTES = 4;
+      /** Байтов хэша уходит в короткий идентификатор компьютера (5 байт = 8 символов). */
+      const SHORT_ID_BYTES = 5;
+      /** Домен отделения отпечатка: меняет его при смене формата, не трогая хэш machineId. */
+      const FINGERPRINT_DOMAIN = "agro:fp:1:";
+      /** Длина полного идентификатора компьютера в hex (SHA-256). */
+      const MACHINE_ID_HEX_LENGTH = 64;
+
+      const FLAG_MACHINE_BOUND = 0x01;
+
+      /** Crockford base32: нет O/0, I/1/L, U — опечатки не превращаются в другой код. */
+      const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+      const ALPHABET_LOOKUP = new Map();
+      for (let index = 0; index < ALPHABET.length; index += 1) ALPHABET_LOOKUP.set(ALPHABET[index], index);
+      /** Однозначные замены при вводе: I и L читаются как 1, O — как 0. */
+      const INPUT_ALIASES = { I: "1", L: "1", O: "0" };
+
+      /** Условия лицензии: единственное возможное значение — бессрочная. */
+      const LICENSE_TERMS = Object.freeze({ permanent: true, expiration: null });
+
+      /** Причины отказа (сообщения для человека — в guard.cjs и на экране активации). */
+      const REJECT = Object.freeze({
+        EMPTY: "EMPTY",
+        MALFORMED: "MALFORMED",
+        LENGTH: "LENGTH",
+        VERSION: "VERSION",
+        PRODUCT: "PRODUCT",
+        UNKNOWN_KEY: "UNKNOWN_KEY",
+        SIGNATURE: "SIGNATURE",
+        REVOKED: "REVOKED",
+        MACHINE_MISMATCH: "MACHINE_MISMATCH",
+        MACHINE_UNKNOWN: "MACHINE_UNKNOWN",
+      });
+
+      /**
+       * Насколько «осмысленной» была лучшая попытка: чем дальше код прошёл по
+       * проверкам, тем конкретнее сообщение человеку («неверный код» вместо
+       * «какая-то каша на вводе»).
+       */
+      const REJECT_PRIORITY = [
+        REJECT.MACHINE_MISMATCH,
+        REJECT.MACHINE_UNKNOWN,
+        REJECT.REVOKED,
+        REJECT.SIGNATURE,
+        REJECT.UNKNOWN_KEY,
+        REJECT.PRODUCT,
+        REJECT.VERSION,
+        REJECT.LENGTH,
+        REJECT.MALFORMED,
+        REJECT.EMPTY,
+      ];
+
+      class CodeFormatError extends Error {
+        constructor(message, reason) {
+          super(message);
+          this.name = "CodeFormatError";
+          this.reason = reason;
+        }
+      }
+
+      /* ── base32 ──────────────────────────────────────────────────────────────── */
+
+      /** Байты → строка Crockford base32 без выравнивания. */
+      function base32Encode(bytes) {
+        let output = "";
+        let buffer = 0;
+        let bits = 0;
+        for (const byte of bytes) {
+          buffer = (buffer << 8) | byte;
+          bits += 8;
+          while (bits >= 5) {
+            bits -= 5;
+            output += ALPHABET[(buffer >>> bits) & 0x1f];
+          }
+        }
+        if (bits > 0) output += ALPHABET[(buffer << (5 - bits)) & 0x1f];
+        return output;
+      }
+
+      /**
+       * Приведение введённого текста: регистр не важен, разделители (пробелы, тире,
+       * точки, подчёркивания, вертикальные палочки) выбрасываются, I/L → 1, O → 0.
+       */
+      function normalizeCodeText(text) {
+        return String(text ?? "")
+          .toUpperCase()
+          // Пробелы и любые разделители, включая обычный дефис и неразрывный пробел
+          .replace(/[\s\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u3000\u2010-\u2015\u2212\-_.:,;/\\|()[\]{}<>'"`=+*#@!?~^%$&]/g, "")
+          .replace(/[ILO]/g, (char) => INPUT_ALIASES[char] ?? char);
+      }
+
+      /** Префикс после нормализации («AGRO» → «AGR0»): нужен, чтобы его отбросить. */
+      const NORMALIZED_PREFIX = normalizeCodeText(CODE_PREFIX);
+
+      /** Строка → байты. Бросает CodeFormatError с причиной, пригодной для показа. */
+      function base32Decode(text) {
+        const clean = normalizeCodeText(text);
+        if (clean.length === 0) throw new CodeFormatError("Пустой код", REJECT.EMPTY);
+        const bytes = [];
+        let buffer = 0;
+        let bits = 0;
+        for (const char of clean) {
+          const value = ALPHABET_LOOKUP.get(char);
+          if (value === undefined) throw new CodeFormatError(`Недопустимый символ «${char}»`, REJECT.MALFORMED);
+          buffer = (buffer << 5) | value;
+          bits += 5;
+          if (bits >= 8) {
+            bits -= 8;
+            bytes.push((buffer >>> bits) & 0xff);
+          }
+        }
+        // Хвостовые биты обязаны быть нулевыми: иначе один и тот же код получал бы
+        // несколько разных написаний, а это ломало бы отзыв лицензий по серийнику.
+        if (bits > 0 && (buffer & ((1 << bits) - 1)) !== 0) {
+          throw new CodeFormatError("Лишние биты в конце кода", REJECT.MALFORMED);
+        }
+        return Uint8Array.from(bytes);
+      }
+
+      /** 80 байт лицензии → текст «AGRO-XXXXXXXX-XXXXXXXX-…». */
+      function formatCode(licenseBytes) {
+        const body = base32Encode(licenseBytes);
+        const groups = [];
+        for (let index = 0; index < body.length; index += GROUP_SIZE) groups.push(body.slice(index, index + GROUP_SIZE));
+        return `${CODE_PREFIX}-${groups.join("-")}`;
+      }
+
+      /** Текст → 80 байт. Префикс необязателен: принимается и «AGRO-…», и тело кода. */
+      function parseCode(text) {
+        let clean = normalizeCodeText(text);
+        if (clean.startsWith(NORMALIZED_PREFIX)) clean = clean.slice(NORMALIZED_PREFIX.length);
+        const bytes = base32Decode(clean);
+        if (bytes.byteLength !== LICENSE_LENGTH) {
+          throw new CodeFormatError(`Ожидалось ${LICENSE_LENGTH} байт, получено ${bytes.byteLength}`, REJECT.LENGTH);
+        }
+        return bytes;
+      }
+
+      /**
+       * Кандидаты на код внутри произвольного текста: письмо, readme, файл .agrolic.
+       * Возвращаем несколько вариантов, а не один — пусть подпись сама выберет верный.
+       */
+      function codeCandidates(text) {
+        const source = String(text ?? "");
+        if (source.trim().length === 0) return [];
+        const candidates = new Set();
+
+        // Текст целиком — самый частый случай (поле ввода, содержимое файла).
+        const whole = normalizeCodeText(source);
+        if (whole) candidates.add(whole);
+
+        // Код с разделителями внутри окружающего текста.
+        const grouped = source.match(/[A-Za-z0-9]{4}(?:[\s\u00a0-]+[0-9A-Za-z]{8}){16}/);
+        if (grouped) candidates.add(normalizeCodeText(grouped[0]));
+
+        // Непрерывные «слова» из символов алфавита: тело кода, тело с префиксом,
+        // а также хвост длинного слова (префикс мог приклеиться к посторонним символам).
+        let normalized = whole;
+        if (normalized.startsWith(NORMALIZED_PREFIX)) normalized = normalized.slice(NORMALIZED_PREFIX.length);
+        for (const run of normalized.match(/[0-9A-Z]{32,}/g) ?? []) {
+          if (run.length === CODE_BODY_LENGTH) candidates.add(run);
+          if (run.length > CODE_BODY_LENGTH) candidates.add(run.slice(run.length - CODE_BODY_LENGTH));
+        }
+
+        return [...candidates].slice(0, 8);
+      }
+
+      /* ── Нагрузка ────────────────────────────────────────────────────────────── */
+
+      /**
+       * Идентификатор компьютера, который видит человек: 8 символов base32
+       * («XXXX-XXXX» на экране активации). Получается из полного идентификатора,
+       * поэтому владелец приложения может выписать персональный код, зная только
+       * эти 8 символов, — полный 64-символьный hex диктовать не нужно.
+       */
+      function machineShortId_(machineId) {
+        const digest = crypto.createHash("sha256").update(String(machineId ?? ""), "utf8").digest();
+        return base32Encode(Uint8Array.from(digest.subarray(0, SHORT_ID_BYTES)));
+      }
+
+      /** Короткий идентификатор компьютера (8 символов base32). */
+      const machineShortId = machineShortId_;
+
+      /** Короткий идентификатор из того, что дали: либо он сам, либо полный machineId. */
+      function resolveShortId({ machineId = "", machineShortId = "" }) {
+        const short = normalizeCodeText(machineShortId);
+        if (short.length === SHORT_ID_BYTES * 2 - 2 && /^[0-9A-Z]+$/.test(short)) return short;
+        const full = String(machineId ?? "").trim();
+        return full ? machineShortId_(full) : "";
+      }
+
+      /** Короткий идентификатор в читаемом виде: «XXXX-XXXX». */
+      function prettyShortId(shortId) {
+        const clean = normalizeCodeText(shortId);
+        return clean.match(/.{1,4}/g)?.join("-") ?? clean;
+      }
+
+      /**
+       * 4 байта отпечатка компьютера. Считаются от КОРОТКОГО идентификатора: тогда
+       * один и тот же отпечаток получается и в приложении (оно знает полный
+       * machineId), и в генераторе кодов (ему достаточно того, что продиктовал
+       * пользователь).
+       */
+      function fingerprintFromShortId(shortId) {
+        const digest = crypto
+          .createHash("sha256")
+          .update(`${FINGERPRINT_DOMAIN}${normalizeCodeText(shortId)}`, "utf8")
+          .digest();
+        return Uint8Array.from(digest.subarray(0, FINGERPRINT_BYTES));
+      }
+
+      /** Отпечаток по полному идентификатору компьютера — так считает приложение. */
+      function machineFingerprint(machineId) {
+        return fingerprintFromShortId(machineShortId_(machineId));
+      }
+
+      /**
+       * Разбор того, что прислал пользователь для персонального кода:
+       * 64 hex-символа — полный идентификатор, 8 символов — короткий.
+       * @returns {{ok:true, shortId:string}|{ok:false, message:string}}
+       */
+      function resolveBindTarget(input) {
+        const raw = String(input ?? "").trim();
+        if (!raw) return { ok: false, message: "Пустой идентификатор компьютера" };
+        const hex = raw.replace(/[^0-9a-fA-F]/g, "");
+        if (hex.length === MACHINE_ID_HEX_LENGTH && /^[0-9a-fA-F\s-]+$/.test(raw)) {
+          return { ok: true, shortId: machineShortId_(hex.toLowerCase()) };
+        }
+        const short = normalizeCodeText(raw);
+        if (short.length === SHORT_ID_BYTES * 2 - 2 && /^[0-9A-Z]+$/.test(short)) {
+          return { ok: true, shortId: short };
+        }
+        return {
+          ok: false,
+          message: `Ожидался короткий идентификатор из ${SHORT_ID_BYTES * 2 - 2} символов или полный идентификатор из ${MACHINE_ID_HEX_LENGTH} hex-символов`,
+        };
+      }
+
+      /**
+       * Собирает 16 байт нагрузки. Используется генератором кодов; приложение
+       * нагрузку только разбирает. Поля даты в раскладке нет.
+       * @param {{keyId:number, serial?:Uint8Array, bound?:boolean, machineId?:string}} options
+       */
+      function buildPayload({ keyId, serial, bound = false, machineId = "" }) {
+        const payload = new Uint8Array(PAYLOAD_LENGTH);
+        payload[0] = FORMAT_VERSION;
+        payload[1] = PRODUCT_ID;
+        payload[2] = keyId & 0xff;
+        payload[3] = bound ? FLAG_MACHINE_BOUND : 0;
+
+        const serialBytes =
+          serial instanceof Uint8Array && serial.byteLength === SERIAL_BYTES ? serial : crypto.randomBytes(SERIAL_BYTES);
+        payload.set(serialBytes.subarray(0, SERIAL_BYTES), 4);
+
+        if (bound) payload.set(machineFingerprint(machineId), 12);
+        return Uint8Array.from(payload);
+      }
+
+      /** 16 байт → объект. Расхождение с раскладкой — отказ, «починить на месте» не пытаемся. */
+      function parsePayload(payload) {
+        if (!(payload instanceof Uint8Array) || payload.byteLength !== PAYLOAD_LENGTH) {
+          throw new CodeFormatError("Неверный размер нагрузки", REJECT.LENGTH);
+        }
+        const fingerprint = payload.subarray(12, 12 + FINGERPRINT_BYTES);
+        const bound = (payload[3] & FLAG_MACHINE_BOUND) === FLAG_MACHINE_BOUND;
+        const serial = payload.subarray(4, 4 + SERIAL_BYTES);
+        const hasFingerprint = !fingerprint.every((byte) => byte === 0);
+        return {
+          version: payload[0],
+          productId: payload[1],
+          keyId: payload[2],
+          flags: payload[3],
+          bound,
+          serial,
+          serialHex: Buffer.from(serial).toString("hex"),
+          fingerprint,
+          fingerprintHex: Buffer.from(fingerprint).toString("hex"),
+          /** У привязанного кода отпечаток есть, у общего — нули. Иначе код подделан «наполовину». */
+          consistent: bound ? hasFingerprint : !hasFingerprint,
+        };
+      }
+
+      /** Серийный номер в читаемом виде: четыре группы по 4 hex-символа. */
+      function prettySerial(serialHex) {
+        const upper = String(serialHex ?? "").toUpperCase();
+        return upper.match(/.{1,4}/g)?.join("-") ?? upper;
+      }
+
+      /* ── Проверка ────────────────────────────────────────────────────────────── */
+
+      function publicKeyFromEntry(entry) {
+        try {
+          return crypto.createPublicKey({
+            key: Buffer.from(String(entry.publicKey), "base64"),
+            format: "der",
+            type: "spki",
+          });
+        } catch {
+          return null;
+        }
+      }
+
+      /** Сравнение байтов в постоянное время. */
+      function sameBytes(a, b) {
+        if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array)) return false;
+        if (a.byteLength !== b.byteLength) return false;
+        return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+      }
+
+      function pickReason(reasons) {
+        for (const reason of REJECT_PRIORITY) if (reasons.has(reason)) return reason;
+        return REJECT.MALFORMED;
+      }
+
+      /**
+       * Полная проверка кода активации. Дат не читает, времени не знает.
+       *
+       * @param {object} params
+       * @param {string} params.code текст кода или содержимое файла лицензии
+       * @param {Array<{keyId:number, publicKey:string}>} params.keys открытые ключи из сборки
+       * @param {string} [params.machineId] полный идентификатор этого компьютера
+       * @param {string} [params.machineShortId] короткий идентификатор (если полного нет)
+       * @param {string[]} [params.revokedSerials] отозванные серийные номера (hex)
+       * @returns {{ok:true, license:object}|{ok:false, reason:string}}
+       */
+      function verifyCode({ code, keys, machineId = "", machineShortId = "", revokedSerials = [] }) {
+        const candidates = codeCandidates(code);
+        if (candidates.length === 0) return { ok: false, reason: REJECT.EMPTY };
+
+        const entries = (Array.isArray(keys) ? keys : []).filter((entry) => entry && typeof entry.publicKey === "string");
+        if (entries.length === 0) return { ok: false, reason: REJECT.UNKNOWN_KEY };
+        const publicKeys = entries.map((entry) => ({ entry, key: publicKeyFromEntry(entry) })).filter((item) => item.key);
+        if (publicKeys.length === 0) return { ok: false, reason: REJECT.UNKNOWN_KEY };
+
+        const revoked = new Set([...revokedSerials].map((value) => String(value).toLowerCase()));
+        const reasons = new Set();
+
+        for (const candidate of candidates) {
+          let bytes;
+          try {
+            bytes = parseCode(candidate);
+          } catch (error) {
+            reasons.add(error instanceof CodeFormatError ? error.reason : REJECT.MALFORMED);
+            continue;
+          }
+
+          const payload = bytes.subarray(0, PAYLOAD_LENGTH);
+          const signature = bytes.subarray(PAYLOAD_LENGTH);
+
+          let license;
+          try {
+            license = parsePayload(payload);
+          } catch {
+            reasons.add(REJECT.LENGTH);
+            continue;
+          }
+          if (license.version !== FORMAT_VERSION) {
+            reasons.add(REJECT.VERSION);
+            continue;
+          }
+          if (license.productId !== PRODUCT_ID) {
+            reasons.add(REJECT.PRODUCT);
+            continue;
+          }
+          if (!license.consistent) {
+            reasons.add(REJECT.MALFORMED);
+            continue;
+          }
+          if (revoked.has(license.serialHex.toLowerCase())) {
+            reasons.add(REJECT.REVOKED);
+            continue;
+          }
+
+          // Ключ ищем сначала по keyId из нагрузки, потом по остальным: ротация
+          // ключей не должна ломать уже выданные коды.
+          const ordered = [
+            ...publicKeys.filter((item) => (item.entry.keyId & 0xff) === license.keyId),
+            ...publicKeys.filter((item) => (item.entry.keyId & 0xff) !== license.keyId),
+          ];
+
+          let signed = false;
+          let matchedKeyId = license.keyId;
+          for (const { entry, key } of ordered) {
+            try {
+              signed = crypto.verify(null, Buffer.from(payload), key, Buffer.from(signature)) === true;
+            } catch {
+              signed = false;
+            }
+            if (signed) {
+              matchedKeyId = entry.keyId & 0xff;
+              break;
+            }
+          }
+          if (!signed) {
+            reasons.add(REJECT.SIGNATURE);
+            continue;
+          }
+
+          if (license.bound) {
+            // Отпечаток считается от короткого идентификатора, поэтому подходит и
+            // полный machineId этого компьютера, и уже укороченный идентификатор.
+            const shortId = resolveShortId({ machineId, machineShortId });
+            if (!shortId) {
+              reasons.add(REJECT.MACHINE_UNKNOWN);
+              continue;
+            }
+            if (!sameBytes(license.fingerprint, fingerprintFromShortId(shortId))) {
+              reasons.add(REJECT.MACHINE_MISMATCH);
+              continue;
+            }
+          }
+
+          return {
+            ok: true,
+            /** Канонический текст кода: из него guard.cjs берёт байты без повторного разбора ввода. */
+            encoded: formatCode(bytes),
+            license: {
+              version: license.version,
+              productId: license.productId,
+              productName: PRODUCT_NAME,
+              keyId: matchedKeyId,
+              bound: license.bound,
+              serialHex: license.serialHex,
+              serial: prettySerial(license.serialHex),
+              ...LICENSE_TERMS,
+            },
+          };
+        }
+
+        return { ok: false, reason: pickReason(reasons) };
+      }
+
+      return { ALPHABET, CODE_BODY_LENGTH, CODE_PREFIX, FLAG_MACHINE_BOUND, FORMAT_VERSION, GROUP_SIZE, LICENSE_LENGTH, LICENSE_TERMS, PAYLOAD_LENGTH, PRODUCT_ID, PRODUCT_NAME, REJECT, SERIAL_BYTES, SIGNATURE_LENGTH, MACHINE_ID_HEX_LENGTH, SHORT_ID_BYTES, CodeFormatError, base32Decode, base32Encode, buildPayload, codeCandidates, fingerprintFromShortId, formatCode, machineFingerprint, machineShortId, prettyShortId, normalizeCodeText, parseCode, parsePayload, prettySerial, resolveBindTarget, resolveShortId, sameBytes, verifyCode };
+      })();
+
+      /* Имена REJECT → человеческие тексты (те же, что показывает приложение). */
+      const AGRO_MESSAGES = (() => {
+      const core = AGRO_CORE;
+      const REJECT_MESSAGES = Object.freeze({
+        [core.REJECT.EMPTY]: "Введите код активации.",
+        [core.REJECT.MALFORMED]: "Код введён с ошибками: проверьте символы и скопируйте код целиком.",
+        [core.REJECT.LENGTH]: "Код неполный или содержит лишние символы.",
+        [core.REJECT.VERSION]: "Код выпущен для другой версии приложения — запросите новый код.",
+        [core.REJECT.PRODUCT]: "Этот код от другого продукта.",
+        [core.REJECT.UNKNOWN_KEY]: "Приложение не знает ключа, которым подписан код. Обновите приложение.",
+        [core.REJECT.SIGNATURE]: "Код недействителен: подпись не совпала.",
+        [core.REJECT.REVOKED]: "Эта лицензия отозвана владельцем приложения.",
+        [core.REJECT.MACHINE_MISMATCH]:
+          "Код выписан для другого компьютера. Если вы переехали на новый компьютер или переустановили Windows — нажмите «Отправить заявку владельцу» и пришлите код этого компьютера: владелец выпустит новый код взамен старого.",
+        [core.REJECT.MACHINE_UNKNOWN]: "Не удалось определить идентификатор этого компьютера.",
+      });
+      return { REJECT_MESSAGES };
+      })();
+
+      /* Имя файла лицензии в проверочном режиме (тот же код, что в приложении). */
+      const AGRO_CM = (() => {
+      const path = { basename: (value) => String(value ?? "").split(/[\\/]/).pop() ?? "" };
+      const LICENSE_FILE_NAME = "agroprognoz.license";
+
+      const CHECK_EXE_PREFIX = "agroprognoz-check-";
+
+      const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
+
+      function sanitizeInstance(raw) {
+        const text = String(raw ?? "").trim().replace(/\s+/g, "-");
+        if (!text) return "";
+        const cleaned = text.replace(/[^A-Za-z0-9_-]/g, "").replace(/^[-_]+/, "");
+        return INSTANCE_PATTERN.test(cleaned) ? cleaned : "";
+      }
+
+      function licenseFileNameFor(instance) {
+        const clean = sanitizeInstance(instance);
+        return clean ? `agroprognoz-check-${clean}.license` : LICENSE_FILE_NAME;
+      }
+
+      function describeCheckInstance({ instance, source }) {
+        if (!instance) return "";
+        return `check mode on: instance "${instance}" via ${source ?? "unknown"}`;
+      }
+      return { LICENSE_FILE_NAME, CHECK_EXE_PREFIX, sanitizeInstance, licenseFileNameFor, describeCheckInstance };
+      })();
+
+      /* Журнал выдачи и тексты покупателю — формат тот же, что у scripts/license-tool.mjs. */
+      const AGRO_L = (() => {
+      const core = AGRO_CORE;
+      function bindPayload({ keyId, shortId, serial }) {
+        const payload = core.buildPayload({ keyId, bound: true, serial });
+        payload.set(core.fingerprintFromShortId(shortId), core.PAYLOAD_LENGTH - 4);
+        return payload;
+      }
+
+      function normalizeMachineCode(raw) {
+        const resolved = core.resolveBindTarget(raw);
+        if (resolved.ok) return resolved;
+        return { ok: false, message: resolved.message };
+      }
+
+      const LEDGER_COLUMNS = Object.freeze([
+        "issuedAt",
+        "serial",
+        "keyId",
+        "kind",
+        "shortId",
+        "code",
+        "name",
+        "phone",
+        "email",
+        "note",
+        "status",
+        "revokedAt",
+        "replaces",
+      ]);
+
+      const LEDGER_HEADER = LEDGER_COLUMNS.join(";");
+
+      function ledgerCell(value, maxLength = 200) {
+        return String(value ?? "")
+          .replace(/[\r\n;]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, maxLength);
+      }
+
+      function legacyRow(cells) {
+        const [serial, keyId, bound, shortId, code, note = ""] = cells;
+        return {
+          issuedAt: "",
+          serial: String(serial ?? "").toLowerCase(),
+          keyId: Number(keyId) || 1,
+          kind: bound === "yes" ? "personal" : "universal",
+          shortId: String(shortId ?? ""),
+          code: String(code ?? ""),
+          name: "",
+          phone: "",
+          email: "",
+          note,
+          status: "active",
+          revokedAt: "",
+          replaces: "",
+        };
+      }
+
+      function parseLedger(text) {
+        const lines = String(text ?? "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        if (!lines.length) return [];
+
+        const first = lines[0];
+        if (first === LEDGER_HEADER || first.startsWith("issuedAt;")) {
+          const header = first.split(";");
+          return lines.slice(1).map((line) => {
+            const cells = line.split(";");
+            const row = {};
+            header.forEach((column, index) => {
+              row[column] = cells[index] ?? "";
+            });
+            // Обязательные поля приводятся к виду даже при ручной правке файла.
+            row.serial = String(row.serial ?? "").toLowerCase();
+            row.keyId = Number(row.keyId) || 1;
+            row.status = row.status === "revoked" ? "revoked" : "active";
+            return row;
+          });
+        }
+
+        // Старый формат: serial;keyId;bound;shortId;code;note (с заголовком или без).
+        return lines
+          .filter((line) => !line.startsWith("serial;"))
+          .map((line) => legacyRow(line.split(";")));
+      }
+
+      function serializeLedger(rows) {
+        const lines = (Array.isArray(rows) ? rows : []).map((row) =>
+          LEDGER_COLUMNS.map((column) => ledgerCell(row[column] ?? "")).join(";"),
+        );
+        return [LEDGER_HEADER, ...lines].join("\n") + "\n";
+      }
+
+      function ledgerNow(now = undefined) {
+        const date = now ? new Date(now) : new Date();
+        const pad = (value) => String(value).padStart(2, "0");
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function buildBuyerMessage({ name = "", code, shortId = "", serialHex = "", universal = false } = {}) {
+        const lines = [];
+        lines.push(name ? `${name}, здравствуйте!` : "Здравствуйте!");
+        lines.push("");
+        lines.push("Ваш код активации «АгроПрогноз — Кукуруза» (лицензия бессрочная):");
+        lines.push("");
+        lines.push(code);
+        lines.push("");
+        if (universal) {
+          lines.push("Код универсальный: работает на любом компьютере. Пожалуйста, не передавайте его дальше — он закреплён за вами.");
+        } else {
+          lines.push(`Код персональный: работает только на компьютере ${core.prettyShortId(shortId)}.`);
+        }
+        lines.push("Введите его на экране активации при первом запуске — дальше приложение открывается без кода. Пробелы и переносы строк при вводе не мешают.");
+        lines.push(`Серийный номер лицензии: ${core.prettySerial(serialHex)} (назовите его при обращении в поддержку).`);
+        return lines.join("\n");
+      }
+
+      function buildBuyerSms({ code, shortId = "", universal = false } = {}) {
+        const bind = universal ? "работает на любом компьютере" : `только для компьютера ${core.prettyShortId(shortId)}`;
+        return `АгроПрогноз: код активации ${code} (${bind}). Лицензия бессрочная. Полная инструкция — в письме.`;
+      }
+
+      function buildAgrolicContent({ name = "", shortId = "", serialHex = "", code, universal = false } = {}) {
+        return [
+          "АгроПрогноз — Кукуруза — файл лицензии",
+          `Кому: ${name || "покупателю"}`,
+          universal ? "Код компьютера: — (код универсальный)" : `Код компьютера: ${core.prettyShortId(shortId)}`,
+          `Серийный номер: ${core.prettySerial(serialHex)}`,
+          "Лицензия: бессрочная, без ограничения по дате",
+          "",
+          "Вставьте код ниже в поле «Код активации» или активируйте приложением этим файлом:",
+          "",
+          code,
+          "",
+        ].join("\n");
+      }
+
+      function agrolicFileName(serialHex) {
+        return `agroprognoz-license-${String(serialHex ?? "").toLowerCase()}.agrolic`;
+      }
+      return { bindPayload, LEDGER_COLUMNS, LEDGER_HEADER, ledgerCell, parseLedger, serializeLedger, ledgerNow, buildBuyerMessage, buildBuyerSms, buildAgrolicContent, agrolicFileName, normalizeMachineCode };
+      })();
+
+      /* Разбор заявки покупателя (то же, что делает станция на сервере). */
+      const AGRO_R = (() => {
+      const core = AGRO_CORE;
+      const SHORT_ID_LABELS = [
+        "код\\s*(?:\\w+\\s+){0,2}?(?:компьютера|машины|устройства|пк|системы)",
+        "(?:id|идентификатор)\\s*(?:компьютера|машины|устройства)",
+        "machine(?:id)?",
+        "hwid",
+      ];
+
+      const FULL_ID_LABELS = ["полный\\s*(?:\\w+\\s+)?идентификатор(?:\\s*(?:компьютера|машины))?", "full\\s*(?:machine\\s*)?id", "machineguid"];
+
+      const SHORT_TOKEN = new RegExp(`[0-9A-HJKMNP-TVZ]{4}\\s*[-–—]?\\s*[0-9A-HJKMNP-TVZ]{4}`, "gi");
+
+      const HEX64 = /\b[0-9a-f]{64}\b/gi;
+
+      const EMAIL = /\b[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}\b/;
+
+      const PHONE = /\+?\d{1,3}[\s(-]*\d{3}[\s)-]*[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/g;
+
+      const VERSION = /\b\d+\.\d+\.\d+\b/;
+
+      const NAME_PATTERNS = [
+        /(?:меня зовут|моё имя|мое имя|имя)\s*[:\-]?\s*([А-ЯЁA-Z][\wА-ЯЁа-яё-]*(?:\s+[А-ЯЁA-Z][\wА-ЯЁа-яё-]+)?)/i,
+        /^([А-ЯЁA-Z][а-яёa-z]{2,}(?:\s+[А-ЯЁA-Z][а-яёa-z]{2,})?)\s*[,!]/,
+      ];
+
+      const FULL_HEX_LENGTH = 64;
+
+      const HEX_LOOSE = /[0-9a-fA-F][0-9a-fA-F \t\r\n-]*[0-9a-fA-F]/g;
+
+      function longestHexRun(text) {
+        let best = "";
+        for (const match of String(text ?? "").matchAll(HEX_LOOSE)) {
+          const compact = match[0].replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+          if (compact.length > best.length) best = compact;
+        }
+        return best;
+      }
+
+      function insideHexRun(text, index, length) {
+        const hex = /[0-9a-fA-F]/;
+        const step = /[0-9a-fA-F \t\r\n-]/;
+        let start = index;
+        let end = index + length;
+        while (start > 0 && step.test(text[start - 1])) start -= 1;
+        while (start < index && !hex.test(text[start])) start += 1;
+        while (end < text.length && step.test(text[end])) end += 1;
+        while (end > index + length && !hex.test(text[end - 1])) end -= 1;
+        return text.slice(start, end).replace(/[^0-9a-fA-F]/g, "").length >= FULL_HEX_LENGTH / 2;
+      }
+
+      function insideLongToken(text, index, length) {
+        const pattern = /[0-9A-Za-z-]/;
+        let start = index;
+        while (start > 0 && pattern.test(text[start - 1])) start -= 1;
+        let end = index + length;
+        while (end < text.length && pattern.test(text[end])) end += 1;
+        return end - start > 20;
+      }
+
+      function clean(value) {
+        return String(value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function tryResolve(text) {
+        const candidate = clean(text).replace(/^[«"'`]+|[«"'`.]+$/g, "");
+        if (!candidate) return null;
+        // Сначала пробуем склеить hex-символы: разорванный переносом полный
+        // идентификатор — частый случай, и он точнее короткого кода.
+        const loose = longestHexRun(candidate);
+        if (loose.length === FULL_HEX_LENGTH) {
+          const fromHex = core.resolveBindTarget(loose);
+          if (fromHex.ok) return { shortId: fromHex.shortId, source: "full" };
+        }
+        const resolved = core.resolveBindTarget(candidate);
+        if (!resolved.ok) return null;
+        return { shortId: resolved.shortId, source: candidate.replace(/[^0-9a-fA-F]/g, "").length === FULL_HEX_LENGTH ? "full" : "short" };
+      }
+
+      function labeledMatch(text, labels) {
+        for (const label of labels) {
+          const pattern = new RegExp(`${label}\\s*[:=]?\\s*(\\S[^\\n,.;)]*)`, "i");
+          const match = pattern.exec(text);
+          if (match) return { raw: clean(match[1]), label: clean(match[0]) };
+        }
+        return null;
+      }
+
+      function parseActivationRequest(input) {
+        const text = String(input ?? "");
+        const trimmed = text.trim();
+        const result = {
+          ok: false,
+          shortId: "",
+          pretty: "",
+          machineId: "",
+          version: "",
+          name: "",
+          phone: "",
+          email: "",
+          candidates: [],
+          conflicts: [],
+          message: "",
+        };
+        if (!trimmed) {
+          return { ...result, message: "Пусто: вставьте текст заявки или код компьютера" };
+        }
+
+        const addCandidate = (found, how) => {
+          if (!found) return;
+          const existing = result.candidates.find((item) => item.shortId === found.shortId);
+          if (existing) return;
+          result.candidates.push({ shortId: found.shortId, how, full: found.source === "full" });
+        };
+
+        // 1. Целиком введённый идентификатор — самый частый случай.
+        const direct = tryResolve(trimmed);
+        if (direct) addCandidate(direct, direct.source === "full" ? "полный идентификатор" : "код компьютера");
+
+        // 2. Подписи из текста заявки («Код компьютера: …», «Полный идентификатор: …»).
+        const shortLabeled = labeledMatch(text, SHORT_ID_LABELS);
+        const shortResolved = tryResolve(shortLabeled?.raw);
+        addCandidate(shortResolved, "подпись «Код компьютера»");
+        const fullLabeled = labeledMatch(text, FULL_ID_LABELS);
+        const fullResolved = tryResolve(fullLabeled?.raw);
+        addCandidate(fullResolved, "подпись «Полный идентификатор»");
+        if (fullLabeled && /^[0-9a-f]{64}$/i.test(clean(fullLabeled.raw))) result.machineId = clean(fullLabeled.raw).toLowerCase();
+
+        // 3. Что-то похожее на код где угодно в тексте (письмо, пересланное сообщение).
+        for (const match of text.matchAll(SHORT_TOKEN)) {
+          // Код активации и полный идентификатор тоже содержат такие группы. Смотрим
+          // на «соседей»: если вокруг непрерывная цепочка букв/цифр/дефисов длиннее
+          // 20 символов — это кусок более длинного токена, а не код компьютера.
+          if (insideLongToken(text, match.index ?? 0, match[0].length)) continue;
+          if (insideHexRun(text, match.index ?? 0, match[0].length)) continue;
+          addCandidate(tryResolve(match[0]), "похожий на код компьютера фрагмент");
+        }
+        for (const match of text.matchAll(HEX64)) {
+          addCandidate(tryResolve(match[0]), "полный идентификатор в тексте");
+          if (!result.machineId) result.machineId = match[0].toLowerCase();
+        }
+        // Полный идентификатор мог прийти с переносами внутри — тогда HEX64 его не
+        // видит. Собираем hex-символы в одну строку и проверяем длину.
+        if (!result.machineId) {
+          const loose = longestHexRun(text);
+          if (loose.length === FULL_HEX_LENGTH) {
+            result.machineId = loose;
+            addCandidate(tryResolve(loose), "полный идентификатор без переносов");
+          }
+        }
+
+        if (!result.candidates.length) {
+          return {
+            ...result,
+            message: "Не нашёл код компьютера. Нужен код вида XXXX-XXXX с экрана активации или полный идентификатор из 64 символов.",
+          };
+        }
+
+        // Полная заявка приложения содержит оба идентификатора: сверяем. Взять нужно
+        // ПОЛНЫЙ — короткий код приложение печатает из него же, значит полный точнее,
+        // а в коротком легче опечататься при переписывании от руки.
+        const chosen = result.candidates.find((item) => item.full) ?? result.candidates[0];
+        if (chosen.full && shortResolved && shortResolved.shortId !== chosen.shortId) {
+          result.conflicts.push(
+            `Код компьютера ${core.prettyShortId(shortResolved.shortId)} не совпадает с полным идентификатором из заявки (там ${core.prettyShortId(chosen.shortId)}). Проверьте: привязка считается по полному.`,
+          );
+        }
+        if (result.candidates.length > 1) {
+          const others = result.candidates.filter((item) => item !== chosen).map((item) => core.prettyShortId(item.shortId));
+          result.conflicts.push(`В тексте найдено несколько кодов компьютера: ${core.prettyShortId(chosen.shortId)}${others.length ? ` и ${others.join(", ")}` : ""}. Взят тот, что соответствует полному идентификатору.`);
+        }
+
+        result.shortId = chosen.shortId;
+        result.pretty = core.prettyShortId(chosen.shortId);
+        const version = VERSION.exec(text);
+        if (version) result.version = version[0];
+        const email = EMAIL.exec(text);
+        if (email) result.email = email[0];
+        const phones = [...text.matchAll(PHONE)].map((match) => match[0]).filter((value) => value.replace(/\D/g, "").length >= 10);
+        if (phones.length) result.phone = clean(phones[0]);
+        for (const pattern of NAME_PATTERNS) {
+          const match = pattern.exec(text);
+          if (match?.[1] && !/компьютер|идентификатор|заявк/i.test(match[1])) {
+            result.name = clean(match[1]);
+            break;
+          }
+        }
+
+        return { ...result, ok: true, message: `Код компьютера: ${result.pretty}` };
+      }
+
+      function findActivationCode(input) {
+        const text = String(input ?? "");
+        if (!text.trim()) return "";
+        const candidates = core.codeCandidates(text);
+        for (const candidate of candidates) {
+          try {
+            const bytes = core.parseCode(candidate);
+            if (core.parsePayload(bytes.subarray(0, core.PAYLOAD_LENGTH)).version === core.FORMAT_VERSION) return core.formatCode(bytes);
+          } catch {
+            /* следующий кандидат */
+          }
+        }
+        return "";
+      }
+      return { parseActivationRequest, findActivationCode };
+      })();
+
+      /* Открытые ключи приложения и список отзыва — точная копия vendor/keys.cjs,
+         то есть того же файла, которым EXE проверяет подпись. Страница сверяет
+         выданный код с этим списком: если вставлен не боевой ключ, код не выдаётся. */
+      const AGRO_APP_KEYS = {"keys":[{"keyId":1,"label":"production","publicKey":"MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw="},{"keyId":2,"label":"shop","publicKey":"MCowBQYDK2VwAyEAR6JF2l11lKMnkTSzNNSGGJytbHyGgPwJZyPaxadTFqE="}],"revokedSerials":["dd765aac5612aeb9"]};
+
+      /* Обвязка браузера: подпись и проверка кода через WebCrypto Ed25519. */
+      /* ── браузерная обвязка ─────────────────────────────────────────────────────
+       * Подпись кода и проверка подписи идут через WebCrypto (Ed25519), поэтому они
+       * async. Всё остальное — формат кода, нагрузка, кандидаты, журнал, разбор
+       * заявки — берётся дословно из кода приложения блоком выше, поэтому код,
+       * выписанный страницей, принимает приложение.
+       *
+       * Файл инлайнится в автономную страницу (scripts/build-standalone.mjs) и
+       * тестируется без браузера (station/tests/standalone.test.mjs). DOM здесь
+       * трогать нельзя.
+       */
+      const AGRO = (() => {
+        const core = AGRO_CORE;
+
+      const AGRO_ED25519 = (() => {
+        const P = (1n << 255n) - 19n;
+        /** Порядок базовой точки: L = 2^252 + 27742317777372353535851937790883648493. */
+        const L = (1n << 252n) + 27742317777372353535851937790883648493n;
+        const MASK64 = (1n << 64n) - 1n;
+
+        function mod(value, m = P) {
+          const rest = value % m;
+          return rest < 0n ? rest + m : rest;
+        }
+
+        function pow(base, exponent, m) {
+          let result = 1n;
+          let power = mod(base, m);
+          let e = exponent;
+          while (e > 0n) {
+            if (e & 1n) result = result * power % m;
+            power = power * power % m;
+            e >>= 1n;
+          }
+          return result;
+        }
+
+        const inv = (value) => pow(value, P - 2n, P);
+
+        /* ── целочисленные корни (нужны только для таблиц SHA-512) ──────────────── */
+
+        function isqrt(n) {
+          if (n < 2n) return n;
+          let x = 1n << BigInt(Math.ceil(n.toString(2).length / 2));
+          for (;;) {
+            const next = (x + n / x) >> 1n;
+            if (next >= x) break;
+            x = next;
+          }
+          while ((x + 1n) * (x + 1n) <= n) x += 1n;
+          while (x * x > n) x -= 1n;
+          return x;
+        }
+
+        function icbrt(n) {
+          if (n < 2n) return n;
+          let x = 1n << BigInt(Math.ceil(n.toString(2).length / 3));
+          for (;;) {
+            const next = (2n * x + n / (x * x)) / 3n;
+            if (next >= x) break;
+            x = next;
+          }
+          while ((x + 1n) ** 3n <= n) x += 1n;
+          while (x ** 3n > n) x -= 1n;
+          return x;
+        }
+
+        /* ── SHA-512 (FIPS 180-4) ──────────────────────────────────────────────────
+         * Таблицы не переписаны руками: K — первые 64 бита дробной части кубического
+         * корня из простых, H — из квадратных корней первых восьми простых. Считаются
+         * один раз при первом хешировании, опечатка в 88 числах поэтому невозможна.
+         */
+        let tables = null;
+
+        function sha512Tables() {
+          if (tables) return tables;
+          const primes = [];
+          for (let candidate = 2; primes.length < 80; candidate += 1) {
+            let simple = true;
+            for (const prime of primes) {
+              if (prime * prime > candidate) break;
+              if (candidate % prime === 0) { simple = false; break; }
+            }
+            if (simple) primes.push(candidate);
+          }
+          const k = [];
+          for (const prime of primes) k.push(icbrt(BigInt(prime) * (1n << 192n)) & MASK64);
+          const h = [];
+          for (const prime of primes.slice(0, 8)) h.push(isqrt(BigInt(prime) * (1n << 128n)) & MASK64);
+          tables = { k, h };
+          return tables;
+        }
+
+        const rotr = (value, bits) => {
+          const n = BigInt(bits);
+          return ((value >> n) | (value << (64n - n))) & MASK64;
+        };
+
+        /** 64 байта хеша; тот же результат, что у crypto.createHash("sha512"). */
+        function sha512(message) {
+          const bytes = typeof message === "string" ? new TextEncoder().encode(message) : message;
+          const { k } = sha512Tables();
+          const h = sha512Tables().h.slice();
+          const total = ((bytes.length + 16) >> 7 << 7) + 128;
+          const block = new Uint8Array(total);
+          block.set(bytes);
+          block[bytes.length] = 0x80;
+          const bits = BigInt(bytes.length) * 8n;
+          for (let index = 0; index < 8; index += 1) block[total - 1 - index] = Number((bits >> BigInt(index * 8)) & 0xffn);
+          const view = new DataView(block.buffer);
+          const w = new Array(80);
+
+          for (let offset = 0; offset < total; offset += 128) {
+            for (let index = 0; index < 16; index += 1) {
+              w[index] = (BigInt(view.getUint32(offset + index * 8)) << 32n) | BigInt(view.getUint32(offset + index * 8 + 4));
+            }
+            for (let index = 16; index < 80; index += 1) {
+              const s0 = rotr(w[index - 15], 1) ^ rotr(w[index - 15], 8) ^ (w[index - 15] >> 7n);
+              const s1 = rotr(w[index - 2], 19) ^ rotr(w[index - 2], 61) ^ (w[index - 2] >> 6n);
+              w[index] = (w[index - 16] + s0 + w[index - 7] + s1) & MASK64;
+            }
+            let [a, b, c, d, e, f, g, hh] = h;
+            for (let index = 0; index < 80; index += 1) {
+              const big1 = rotr(e, 14) ^ rotr(e, 18) ^ rotr(e, 41);
+              const choice = (e & f) ^ ((MASK64 ^ e) & g);
+              const one = (hh + big1 + choice + k[index] + w[index]) & MASK64;
+              const big0 = rotr(a, 28) ^ rotr(a, 34) ^ rotr(a, 39);
+              const majority = (a & b) ^ (a & c) ^ (b & c);
+              const two = (majority + big0) & MASK64;
+              hh = g; g = f; f = e; e = (d + one) & MASK64;
+              d = c; c = b; b = a; a = (one + two) & MASK64;
+            }
+            const sum = [a, b, c, d, e, f, g, hh];
+            for (let index = 0; index < 8; index += 1) h[index] = (h[index] + sum[index]) & MASK64;
+          }
+
+          const out = new Uint8Array(64);
+          for (let index = 0; index < 8; index += 1) {
+            for (let byte = 0; byte < 8; byte += 1) {
+              out[index * 8 + byte] = Number((h[index] >> BigInt(56 - byte * 8)) & 0xffn);
+            }
+          }
+          return out;
+        }
+
+        /* ── little-endian ───────────────────────────────────────────────────────── */
+
+        function leToBigInt(bytes) {
+          let value = 0n;
+          for (let index = bytes.length - 1; index >= 0; index -= 1) value = (value << 8n) | BigInt(bytes[index]);
+          return value;
+        }
+
+        function bigIntToLe(value, size) {
+          const out = new Uint8Array(size);
+          let rest = value;
+          for (let index = 0; index < size; index += 1) {
+            out[index] = Number(rest & 0xffn);
+            rest >>= 8n;
+          }
+          return out;
+        }
+
+        function concat(...parts) {
+          const total = parts.reduce((sum, part) => sum + part.length, 0);
+          const out = new Uint8Array(total);
+          let at = 0;
+          for (const part of parts) {
+            out.set(part, at);
+            at += part.length;
+          }
+          return out;
+        }
+
+        /* ── кривая (расширенные координаты Эдвардса: x = X/Z, y = Y/Z, T = xy/Z) ─ */
+
+        const D = mod(-121665n * inv(121666n));
+        const SQRT_M1 = pow(2n, (P - 1n) / 4n, P);
+        const ZERO = [0n, 1n, 1n, 0n];
+
+        function addPoint(p1, p2) {
+          const [x1, y1, z1, t1] = p1;
+          const [x2, y2, z2, t2] = p2;
+          const a = mod((y1 - x1) * (y2 - x2));
+          const b = mod((y1 + x1) * (y2 + x2));
+          const c = mod(t1 * 2n * D * t2);
+          const dd = mod(z1 * 2n * z2);
+          const e = mod(b - a);
+          const f = mod(dd - c);
+          const g = mod(dd + c);
+          const hh = mod(b + a);
+          return [mod(e * f), mod(g * hh), mod(f * g), mod(e * hh)];
+        }
+
+        function doublePoint(point) {
+          const [x, y, z, t] = point;
+          const a = mod(x * x);
+          const b = mod(y * y);
+          const c = mod(2n * mod(z * z));
+          const dd = mod(-a);
+          const e = mod((x + y) ** 2n - a - b);
+          const g = mod(dd + b);
+          const f = mod(g - c);
+          const hh = mod(dd - b);
+          return [mod(e * f), mod(g * hh), mod(f * g), mod(e * hh)];
+        }
+
+        function multiply(scalar, point) {
+          let result = ZERO;
+          let addend = point;
+          let k = scalar;
+          while (k > 0n) {
+            if (k & 1n) result = addPoint(result, addend);
+            addend = doublePoint(addend);
+            k >>= 1n;
+          }
+          return result;
+        }
+
+        /** Распаковка точки из 32 байт (RFC 8032, §5.6.1). null — точка вне кривой. */
+        function decompress(bytes) {
+          if (bytes.length !== 32) return null;
+          const copy = Uint8Array.from(bytes);
+          const sign = (copy[31] >> 7) & 1;
+          copy[31] &= 0x7f;
+          const y = leToBigInt(copy);
+          if (y >= P) return null;
+          const y2 = mod(y * y);
+          const u = mod(y2 - 1n);
+          const v = mod(D * y2 + 1n);
+          // x² = (y² − 1) / (d·y² + 1); для p ≡ 5 (mod 8) корень — степень (p+3)/8,
+          // а если попался корень из −x², домножаем на √−1.
+          const square = mod(u * inv(v));
+          let x = pow(square, (P + 3n) / 8n, P);
+          if (mod(x * x) !== square) {
+            x = mod(x * SQRT_M1);
+            if (mod(x * x) !== square) return null;
+          }
+          if (x === 0n && sign === 1) return null;
+          if (Number(x & 1n) !== sign) x = P - x;
+          return [mod(x * v), mod(y * v), v, mod(x * y % P * v)];
+        }
+
+        /** Упаковка точки в 32 байта: y + старший бит = чётность x. */
+        function compress(point) {
+          const [x, y, z] = point;
+          const zi = inv(z);
+          const affineX = mod(x * zi);
+          const affineY = mod(y * zi);
+          const out = bigIntToLe(affineY, 32);
+          if (affineX & 1n) out[31] |= 0x80;
+          return out;
+        }
+
+        /*
+         * Базовая точка: y = 4/5, sign = 0. Восстанавливается лениво — в браузере без
+         * BigInt (а он и есть причина всего этого файла) вычисление не должно падать
+         * прямо при загрузке страницы: сначала страница успевает объяснить, что делать.
+         */
+        let basePoint = null;
+
+        function base() {
+          if (!basePoint) {
+            const y = mod(4n * inv(5n));
+            const point = decompress(bigIntToLe(y, 32));
+            if (!point) throw new Error("Не удалось восстановить базовую точку Ed25519.");
+            basePoint = point;
+          }
+          return basePoint;
+        }
+
+        /* ── ключи, подпись, проверка (RFC 8032 §5.1.6) ─────────────────────────── */
+
+        function expandSeed(seed) {
+          const hash = sha512(seed);
+          const head = hash.slice(0, 32);
+          head[0] &= 0xf8;
+          head[31] = (head[31] & 0x7f) | 0x40;
+          return { scalar: leToBigInt(head), prefix: hash.slice(32) };
+        }
+
+        /** Открытый ключ (32 байта) по 32-байтному seed'у. */
+        function publicKeyFromSeed(seed) {
+          return compress(multiply(expandSeed(seed).scalar, base()));
+        }
+
+        /** 64-байтная подпись; seed — 32 байта из PKCS#8. */
+        function sign(seed, message) {
+          const { scalar, prefix } = expandSeed(seed);
+          const g = base();
+          const publicKey = compress(multiply(scalar, g));
+          const r = mod(leToBigInt(sha512(concat(prefix, message))), L);
+          const bigR = compress(multiply(r, g));
+          const k = mod(leToBigInt(sha512(concat(bigR, publicKey, message))), L);
+          return concat(bigR, bigIntToLe(mod(r + k * scalar, L), 32));
+        }
+
+        function verify(publicKey, signature, message) {
+          if (signature.length !== 64 || publicKey.length !== 32) return false;
+          const s = leToBigInt(signature.slice(32));
+          if (s >= L) return false;
+          const pointA = decompress(publicKey);
+          const pointR = decompress(signature.slice(0, 32));
+          if (!pointA || !pointR) return false;
+          const k = mod(leToBigInt(sha512(concat(signature.slice(0, 32), publicKey, message))), L);
+          const left = multiply(s, base());
+          const right = addPoint(pointR, multiply(k, pointA));
+          const a = compress(left);
+          const b = compress(right);
+          let diff = 0;
+          for (let index = 0; index < 32; index += 1) diff |= a[index] ^ b[index];
+          return diff === 0;
+        }
+
+        return { sha512, sign, verify, publicKeyFromSeed, compress, decompress, multiply, BASE: base, ORDER: L };
+      })();
+
+
+        const subtle = globalThis.crypto?.subtle ?? null;
+
+        /** DER-префикс открытого ключа Ed25519 в SPKI (32 байта ключа идут за ним). */
+        const SPKI_PREFIX_HEX = "302a300506032b6570032100";
+        /** Метка закрытого ключа Ed25519 в PKCS#8: 04 20 <32 байта seed>. */
+        const SEED_MARK = "0420";
+        /** Встроенный в PKCS#8 открытый ключ: a1 21 03 21 00 <32 байта>. */
+        const PUB_MARK = "a121032100";
+
+        /* ── кодирование ───────────────────────────────────────────────────────── */
+
+        function bytesFromBase64(value) {
+          const binary = atob(String(value ?? "").replace(/\s+/g, ""));
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+          return bytes;
+        }
+
+        function base64FromBytes(bytes) {
+          let binary = "";
+          for (const byte of bytes) binary += String.fromCharCode(byte);
+          return btoa(binary);
+        }
+
+        function base64UrlFromBytes(bytes) {
+          return base64FromBytes(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        }
+
+        function bytesFromBase64Url(value) {
+          const text = String(value ?? "").replace(/-/g, "+").replace(/_/g, "/");
+          return bytesFromBase64(text + "=".repeat((4 - (text.length % 4)) % 4));
+        }
+
+        function hexFromBytes(bytes) {
+          return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        }
+
+        function bytesFromHex(value) {
+          const hex = String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+          if (!hex || hex.length % 2 === 1) throw new Error("Ожидалась hex-строка чётной длины.");
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+          return bytes;
+        }
+
+        /* ── ключи ─────────────────────────────────────────────────────────────── */
+
+        /** Браузер должен поддерживать Ed25519 в WebCrypto (Chrome/Edge 137+, FF 130+, Safari 17+). */
+        function ed25519Supported() {
+          return Boolean(subtle && typeof subtle.importKey === "function" && typeof subtle.sign === "function");
+        }
+
+        /**
+         * Поддержку алгоритма наличием функций не проверить: Ed25519 в WebCrypto
+         * появился в Chrome/Edge только в 137 (май 2025), в Firefox — в 130, в Safari —
+         * в 17. Браузеры на старом Chromium (Яндекс, старые Opera) функции отдают, а на
+         * подписе бросают DOMException с ПУСТЫМ сообщением. Поэтому спрашиваем браузер
+         * делом: просим сгенерировать ключ. Не умеет — подписывает встроенный JS, и код
+         * всё равно выходит тем же (побайтовая сверка — в station/tests/ed25519.test.mjs).
+         */
+        let ed25519Probe = null;
+
+        async function ed25519Available() {
+          if (!ed25519Supported()) return false;
+          if (ed25519Probe === null) {
+            try {
+              await subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]);
+              ed25519Probe = true;
+            } catch {
+              ed25519Probe = false;
+            }
+          }
+          return ed25519Probe;
+        }
+
+        /** Чем в итоге подписали: «webcrypto» или «js» — для отладки и для станции. */
+        async function signingMode() {
+          return (await ed25519Available()) ? "webcrypto" : "js";
+        }
+
+        /** Человекочитаемая причина провала подписи (у DOMException часто пусто). */
+        function signErrorText(error) {
+          const text = String(error?.message ?? "").trim();
+          if (text) return text;
+          const name = String(error?.name ?? "");
+          if (/NotSupported/i.test(name)) return "браузер не поддерживает Ed25519 — нужен Chrome/Edge 137+, Firefox 130+ или Safari 17+";
+          if (/Invalid|Data|Syntax/i.test(name)) return "ключ прочитан не целиком: вставляйте privateKey без пропусков и переносов";
+          return name || "браузер отказался подписывать без объяснения (чаще всего — нет Ed25519 в WebCrypto)";
+        }
+
+        /** PKCS#8 base64 → 32-байтный seed (при возможности — и открытый ключ). */
+        function readPkcs8(privateKeyBase64) {
+          const hex = hexFromBytes(bytesFromBase64(privateKeyBase64));
+          const seedAt = hex.indexOf(SEED_MARK);
+          if (seedAt === -1) throw new Error("Похоже, это не PKCS#8 Ed25519 (нет метки 0420).");
+          const seed = hex.slice(seedAt + SEED_MARK.length, seedAt + SEED_MARK.length + 64);
+          if (!/^[0-9a-f]{64}$/.test(seed)) throw new Error("Не удалось прочитать закрытый ключ: seed короче 32 байт.");
+          const publicAt = hex.indexOf(PUB_MARK);
+          const publicKey = publicAt === -1 ? "" : hex.slice(publicAt + PUB_MARK.length, publicAt + PUB_MARK.length + 64);
+          return { seed: bytesFromHex(seed), publicKey: /^[0-9a-f]{64}$/.test(publicKey) ? bytesFromHex(publicKey) : null };
+        }
+
+        /** Открытый ключ (SPKI base64) из закрытого, если PKCS#8 его содержит. */
+        function publicFromPrivate(privateKeyBase64) {
+          const { publicKey } = readPkcs8(privateKeyBase64);
+          return publicKey ? base64FromBytes(bytesFromHex(SPKI_PREFIX_HEX + hexFromBytes(publicKey))) : "";
+        }
+
+        /**
+         * Проверка пары ключей без доверия к тексту: подписываем 32 байта вызова и
+         * сверяем открытым ключом приложения. Так страница отвечает «этот закрытый
+         * ключ — тот самый», даже когда PKCS#8 открытого ключа не содержит.
+         */
+        async function matchKey({ privateKeyBase64, keys = [] } = {}) {
+          let seed;
+          let embedded;
+          try {
+            ({ seed, publicKey: embedded } = readPkcs8(privateKeyBase64));
+          } catch (error) {
+            return { ok: false, message: error?.message ?? "Закрытый ключ не читается." };
+          }
+          const challenge = new Uint8Array(32).map((_, index) => (index * 7 + 11) & 0xff);
+          const signature = await signWithSeed(seed, embedded ?? AGRO_ED25519.publicKeyFromSeed(seed), challenge);
+          for (const entry of keys) {
+            let accepted = false;
+            try {
+              accepted = await verifyWithRaw(rawPublicFromSpki(entry.publicKey), signature, challenge);
+            } catch {
+              accepted = false;
+            }
+            if (accepted) return { ok: true, keyId: Number(entry.keyId) || 1, label: String(entry.label ?? "") };
+          }
+          return { ok: false, message: "Закрытый ключ не соответствует ни одному открытому ключу приложения." };
+        }
+
+        /** Открытый ключ для подписи: явный → из PKCS#8 → из списка по keyId. */
+        function publicKeyFor({ publicKeyBase64 = "", embedded = null, keys = [], keyId = 1 } = {}) {
+          if (publicKeyBase64) return publicKeyBase64;
+          if (embedded) return base64FromBytes(bytesFromHex(SPKI_PREFIX_HEX + hexFromBytes(embedded)));
+          const found = keys.find((entry) => (Number(entry.keyId) || 1) === (Number(keyId) || 1)) ?? (keys.length === 1 ? keys[0] : null);
+          return found?.publicKey ?? "";
+        }
+
+        /** 32 байта открытого ключа из SPKI (или из уже голого ключа). */
+        function rawPublicFromSpki(base64) {
+          const bytes = bytesFromBase64(base64);
+          const hex = hexFromBytes(bytes);
+          if (hex.startsWith(SPKI_PREFIX_HEX) && hex.length === SPKI_PREFIX_HEX.length + 64) {
+            return bytesFromHex(hex.slice(SPKI_PREFIX_HEX.length));
+          }
+          if (bytes.length === 32) return bytes;
+          throw new Error("Открытый ключ должен быть SPKI Ed25519 (44 байта) или голым ключом (32 байта).");
+        }
+
+        /** 32 байта открытого ключа: из PKCS#8 → из SPKI → восстановленный из seed. */
+        function publicKeyBytesFor(privateKeyBase64, publicKeyBase64 = "") {
+          const { seed, publicKey: embedded } = readPkcs8(privateKeyBase64);
+          if (embedded) return { seed, publicKey: embedded };
+          if (publicKeyBase64) return { seed, publicKey: rawPublicFromSpki(publicKeyBase64) };
+          // Открытого ключа в PKCS#8 нет — восстанавливаем из seed. Подписать можно и
+          // так, а список ключей приложения результат всё равно проверит ниже.
+          return { seed, publicKey: AGRO_ED25519.publicKeyFromSeed(seed) };
+        }
+
+        /** Подпись: сначала браузер, при его отказе — встроенный JS. */
+        async function signWithSeed(seed, publicKeyBytes, message) {
+          if (await ed25519Available()) {
+            try {
+              const key = await subtle.importKey(
+                "jwk",
+                { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(publicKeyBytes), d: base64UrlFromBytes(seed) },
+                { name: "Ed25519" },
+                false,
+                ["sign"],
+              );
+              return new Uint8Array(await subtle.sign({ name: "Ed25519" }, key, message));
+            } catch {
+              /* браузер передумал — подписываем сами, пользователь не виноват */
+            }
+          }
+          return AGRO_ED25519.sign(seed, message);
+        }
+
+        /** Проверка подписи — тем же способом, что и подпись. */
+        async function verifyWithRaw(rawPublicKey, signature, message) {
+          if (await ed25519Available()) {
+            try {
+              const key = await subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: base64UrlFromBytes(rawPublicKey) }, { name: "Ed25519" }, true, ["verify"]);
+              return (await subtle.verify({ name: "Ed25519" }, key, signature, message)) === true;
+            } catch {
+              return AGRO_ED25519.verify(rawPublicKey, signature, message);
+            }
+          }
+          return AGRO_ED25519.verify(rawPublicKey, signature, message);
+        }
+
+        /**
+         * Открытые ключи приложения из чего угодно, что удобно вставить: JSON
+         * `{keys:[...]}`, содержимое electron/license/keys.cjs или station/keys.json.
+         */
+        function parseKeysSource(text) {
+          const source = String(text ?? "").trim();
+          if (!source) return { ok: false, message: "Пусто: вставьте JSON или содержимое electron/license/keys.cjs." };
+          try {
+            const parsed = JSON.parse(source);
+            const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.keys) ? parsed.keys : [];
+            const revokedSerials = Array.isArray(parsed?.revokedSerials) ? parsed.revokedSerials.map((value) => String(value).toLowerCase()) : [];
+            if (list.length) return { ok: true, value: { keys: normalizeKeyEntries(list), revokedSerials } };
+          } catch {
+            /* не JSON — пробуем вычитать из модуля keys.cjs */
+          }
+          const keys = [];
+          const entry = /\{\s*keyId\s*:\s*(\d+)\s*,\s*label\s*:\s*["'`]([^"'`]*)["'`]\s*,\s*publicKey\s*:\s*["'`]([A-Za-z0-9+/=\s]+)["'`]\s*\}/g;
+          for (const match of source.matchAll(entry)) {
+            keys.push({ keyId: Number(match[1]), label: match[2], publicKey: match[3].replace(/\s+/g, "") });
+          }
+          const revoked = [];
+          const revokedBlock = /revokedSerials\s*:\s*\[([\s\S]*?)\]/.exec(source);
+          if (revokedBlock) for (const item of revokedBlock[1].matchAll(/["'`]([0-9a-fA-F]{16})["'`]/g)) revoked.push(item[1].toLowerCase());
+          if (!keys.length) return { ok: false, message: "Не нашёл ни одного открытого ключа. Нужен keys.cjs целиком или JSON вида {\"keys\":[…]}." };
+          return { ok: true, value: { keys, revokedSerials: revoked } };
+        }
+
+        function normalizeKeyEntries(list) {
+          return list
+            .filter((entry) => entry && typeof entry.publicKey === "string")
+            .map((entry) => ({ keyId: Number(entry.keyId) || 1, label: String(entry.label ?? ""), publicKey: entry.publicKey.replace(/\s+/g, "") }));
+        }
+
+        /* ── выдача кода ───────────────────────────────────────────────────────── */
+
+        /**
+         * Выписывает код активации. Нагрузку собирает та же функция проекта, что и
+         * scripts/license-tool.mjs (bindPayload/buildPayload), подпись ставит браузер.
+         */
+        async function issueCode({ privateKeyBase64, publicKeyBase64 = "", keys = [], keyId = 1, bound = false, shortId = "", serial = "" } = {}) {
+          const serialBytes = serial ? bytesFromHex(serial) : undefined;
+          const cleanShort = bound ? core.normalizeCodeText(shortId) : "";
+          if (bound && cleanShort.length !== 8) throw new Error("Для персонального кода нужен код компьютера из 8 символов.");
+          const payload = bound
+            ? AGRO_L.bindPayload({ keyId, shortId: cleanShort, serial: serialBytes })
+            : core.buildPayload({ keyId, serial: serialBytes, bound: false });
+          const { seed, publicKey: publicKeyBytes } = publicKeyBytesFor(privateKeyBase64, publicKeyFor({ publicKeyBase64, keys, keyId }));
+          const signature = await signWithSeed(seed, publicKeyBytes, payload);
+          const bytes = new Uint8Array(core.LICENSE_LENGTH);
+          bytes.set(payload, 0);
+          bytes.set(signature, core.PAYLOAD_LENGTH);
+          const parsed = core.parsePayload(payload);
+          return { code: core.formatCode(bytes), serialHex: parsed.serialHex, keyId: parsed.keyId, bound: parsed.bound, shortId: cleanShort };
+        }
+
+        /* ── проверка кода ─────────────────────────────────────────────────────── */
+
+        /**
+         * Полная проверка кода — повтор логики core.verifyCode, но подпись проверяет
+         * WebCrypto. Возвращает тот же объект, что и приложение (плюс `message` для
+         * человека и `code` — канонический текст).
+         */
+        async function verifyCode({ code, keys, machineId = "", machineShortId = "", revokedSerials = [] } = {}) {
+          const candidates = core.codeCandidates(code);
+          if (candidates.length === 0) return reject(core.REJECT.EMPTY);
+
+          const entries = (Array.isArray(keys) ? keys : []).filter((entry) => entry && typeof entry.publicKey === "string");
+          if (entries.length === 0) return reject(core.REJECT.UNKNOWN_KEY);
+
+          const publicKeys = [];
+          for (const entry of entries) {
+            try {
+              publicKeys.push({ entry, raw: rawPublicFromSpki(entry.publicKey) });
+            } catch {
+              /* ключ не читается — как в приложении: его просто нет в списке */
+            }
+          }
+          if (publicKeys.length === 0) return reject(core.REJECT.UNKNOWN_KEY);
+
+          const revoked = new Set([...revokedSerials].map((value) => String(value).toLowerCase()));
+          const reasons = new Set();
+
+          for (const candidate of candidates) {
+            let bytes;
+            try {
+              bytes = core.parseCode(candidate);
+            } catch (error) {
+              reasons.add(error instanceof core.CodeFormatError ? error.reason : core.REJECT.MALFORMED);
+              continue;
+            }
+
+            const payload = bytes.subarray(0, core.PAYLOAD_LENGTH);
+            const signature = bytes.subarray(core.PAYLOAD_LENGTH);
+
+            let license;
+            try {
+              license = core.parsePayload(payload);
+            } catch {
+              reasons.add(core.REJECT.LENGTH);
+              continue;
+            }
+            if (license.version !== core.FORMAT_VERSION) {
+              reasons.add(core.REJECT.VERSION);
+              continue;
+            }
+            if (license.productId !== core.PRODUCT_ID) {
+              reasons.add(core.REJECT.PRODUCT);
+              continue;
+            }
+            if (!license.consistent) {
+              reasons.add(core.REJECT.MALFORMED);
+              continue;
+            }
+            if (revoked.has(license.serialHex.toLowerCase())) {
+              reasons.add(core.REJECT.REVOKED);
+              continue;
+            }
+
+            const ordered = [
+              ...publicKeys.filter((item) => (item.entry.keyId & 0xff) === license.keyId),
+              ...publicKeys.filter((item) => (item.entry.keyId & 0xff) !== license.keyId),
+            ];
+
+            let signed = false;
+            let matchedKeyId = license.keyId;
+            for (const { entry, raw } of ordered) {
+              try {
+                signed = await verifyWithRaw(raw, signature, payload);
+              } catch {
+                signed = false;
+              }
+              if (signed) {
+                matchedKeyId = entry.keyId & 0xff;
+                break;
+              }
+            }
+            if (!signed) {
+              reasons.add(core.REJECT.SIGNATURE);
+              continue;
+            }
+
+            if (license.bound) {
+              const shortId = core.resolveShortId({ machineId, machineShortId });
+              if (!shortId) {
+                reasons.add(core.REJECT.MACHINE_UNKNOWN);
+                continue;
+              }
+              if (!core.sameBytes(license.fingerprint, core.fingerprintFromShortId(shortId))) {
+                reasons.add(core.REJECT.MACHINE_MISMATCH);
+                continue;
+              }
+            }
+
+            const result = {
+              ok: true,
+              encoded: core.formatCode(bytes),
+              license: {
+                version: license.version,
+                productId: license.productId,
+                productName: core.PRODUCT_NAME,
+                keyId: matchedKeyId,
+                bound: license.bound,
+                serialHex: license.serialHex,
+                serial: core.prettySerial(license.serialHex),
+                ...core.LICENSE_TERMS,
+              },
+            };
+            return { ...result, code: result.encoded, message: "" };
+          }
+
+          return reject(pickReason(reasons));
+
+          // тот же порядок «насколько дал код», что в core.verifyCode
+          function pickReason(values) {
+            const priority = [
+              core.REJECT.MACHINE_MISMATCH,
+              core.REJECT.MACHINE_UNKNOWN,
+              core.REJECT.REVOKED,
+              core.REJECT.SIGNATURE,
+              core.REJECT.UNKNOWN_KEY,
+              core.REJECT.PRODUCT,
+              core.REJECT.VERSION,
+              core.REJECT.LENGTH,
+              core.REJECT.MALFORMED,
+              core.REJECT.EMPTY,
+            ];
+            for (const reason of priority) if (values.has(reason)) return reason;
+            return core.REJECT.MALFORMED;
+          }
+        }
+
+        function reject(reason) {
+          return { ok: false, reason, message: AGRO_MESSAGES.REJECT_MESSAGES[reason] ?? "Код не принят." };
+        }
+
+        /* ── отзыв ─────────────────────────────────────────────────────────────── */
+
+        /** Серийник кода в том виде, в каком его читает приложение (hex, 16 символов). */
+        function serialOfCode(code) {
+          try {
+            return { ok: true, serialHex: core.parsePayload(core.parseCode(code).subarray(0, core.PAYLOAD_LENGTH)).serialHex };
+          } catch (error) {
+            return { ok: false, message: error?.message ?? String(error) };
+          }
+        }
+
+        /** Список отзыва из текста: hex-строки построчно, плюс tolerate полные коды. */
+        function parseRevokedList(text) {
+          const serials = new Set();
+          const notes = [];
+          for (const line of String(text ?? "").split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const oneLine = trimmed.replace(/\s+/g, "");
+            if (/^[0-9a-f]{16}$/i.test(oneLine)) {
+              serials.add(oneLine.toLowerCase());
+              continue;
+            }
+            const fromCode = serialOfCode(trimmed);
+            if (fromCode.ok) serials.add(fromCode.serialHex);
+            else notes.push(`Пропущено: «${trimmed.slice(0, 32)}» — ${fromCode.message}`);
+          }
+          return { serials: [...serials].sort(), notes };
+        }
+
+        /* ── заявка покупателя ─────────────────────────────────────────────────── */
+
+        /** Разбор заявки — без пересборки объекта: станция и страница отдают одно и то же. */
+        const parseRequest = (text) => AGRO_R.parseActivationRequest(text);
+
+        /** Короткий идентификатор из того, что дали (8 символов или полный 64-hex). */
+        function resolveMachine(input) {
+          const resolved = core.resolveBindTarget(input);
+          if (!resolved.ok) return { ok: false, message: resolved.message };
+          return { ok: true, shortId: resolved.shortId, pretty: core.prettyShortId(resolved.shortId) };
+        }
+
+        /* ── журнал и тексты покупателю ────────────────────────────────────────── */
+
+        const ledgerParse = (text) => AGRO_L.parseLedger(text);
+        const ledgerSerialize = (rows) => AGRO_L.serializeLedger(rows);
+        const stamp = () => AGRO_L.ledgerNow();
+
+        function buyerMessage({ name = "", code, pretty = "", serial = "", universal = false } = {}) {
+          return AGRO_L.buildBuyerMessage({ name, code, shortId: pretty, serialHex: serial, universal });
+        }
+
+        function agrolicContent({ name = "", pretty = "", serial = "", code, universal = false } = {}) {
+          return AGRO_L.buildAgrolicContent({ name, code, shortId: pretty, serialHex: serial, universal });
+        }
+
+        function agrolicName(serialHex) {
+          return AGRO_L.agrolicFileName(serialHex);
+        }
+
+        function smsText({ code, pretty = "", universal = false } = {}) {
+          return AGRO_L.buildBuyerSms({ code, shortId: pretty, universal });
+        }
+
+        return {
+          // ядро приложения (дословно) — удобно для отладки и для «Проверки кода»
+          ...core,
+          // имя файла лицензии в проверочном режиме
+          licenseFileNameFor: AGRO_CM.licenseFileNameFor,
+          sanitizeInstance: AGRO_CM.sanitizeInstance,
+          CHECK_EXE_PREFIX: AGRO_CM.CHECK_EXE_PREFIX,
+          LICENSE_FILE_NAME: AGRO_CM.LICENSE_FILE_NAME,
+          // журнал и сообщения
+          ledgerParse,
+          ledgerSerialize,
+          LEDGER_COLUMNS: AGRO_L.LEDGER_COLUMNS,
+          stamp,
+          buyerMessage,
+          agrolicContent,
+          agrolicName,
+          smsText,
+          // разбор заявки
+          parseRequest,
+          resolveMachine,
+          // криптография браузера (и встроенный запасной путь)
+          ed25519Supported,
+          ed25519Available,
+          signingMode,
+          signErrorText,
+          signWithSeed,
+          verifyWithRaw,
+          publicFromPrivate,
+          matchKey,
+          issueCode,
+          verifyCode,
+          serialOfCode,
+          parseRevokedList,
+          parseKeysSource,
+          normalizeKeyEntries,
+          // утилиты
+          bytesFromBase64,
+          base64FromBytes,
+          hexFromBytes,
+          bytesFromHex,
+        };
+      })();
+
+
+
+      /* ── интерфейс ─────────────────────────────────────────────────────── */
+      (() => {
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+        const STORE = {
+          private: "agro.station.private",
+          public: "agro.station.public",
+          ledger: "agro.station.ledger",
+          exeUrl: "agro.station.exeUrl",
+        };
+        // Открытые ключи приложения вшивает сборщик — это копия
+        // electron/license/keys.cjs, тот же список, которым EXE проверяет подпись.
+        // Отдельной копии здесь нет, чтобы она не могла устареть: после смены
+        // ключа в проекте достаточно npm run station:standalone.
+        const DEFAULT_PUBLIC = AGRO_APP_KEYS;
+        const DEFAULT_EXE_URL = "https://github.com/Igorr112323/Weather_Cover/releases/download/v0.3.4/AgroPrognoz-0.3.4-portable.exe";
+        const RESET_COMMAND = 'move "%APPDATA%\\AgroPrognoz\\agroprognoz.license" "%APPDATA%\\AgroPrognoz\\agroprognoz.license.bak"';
+
+        const read = (key, fallback = "") => {
+          try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+        };
+        const write = (key, value) => {
+          try { localStorage.setItem(key, value); return true; } catch { return false; }
+        };
+        const forget = (key) => { try { localStorage.removeItem(key); } catch { /* без localStorage */ } };
+
+        function toast(text) {
+          const node = $("toast");
+          node.textContent = text;
+          node.hidden = false;
+          clearTimeout(toast.timer);
+          toast.timer = setTimeout(() => { node.hidden = true; }, 4000);
+        }
+
+        async function copy(text, label = "Скопировано") {
+          try {
+            await navigator.clipboard.writeText(text);
+            toast(label);
+          } catch {
+            const area = document.createElement("textarea");
+            area.value = text;
+            document.body.append(area);
+            area.select();
+            document.execCommand("copy");
+            area.remove();
+            toast(label);
+          }
+        }
+
+        function download(name, content) {
+          const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = name;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
+        function box(node, html, error = false) {
+          node.className = `box ${error ? "is-error" : ""}`;
+          node.innerHTML = html;
+        }
+
+        const codeBlock = (code) => `<div class="code" data-copy="${esc(code)}"><code>${esc(code)}</code><button class="btn tiny" data-copy-btn>Копировать</button></div>`;
+        const kv = (rows) => `<dl class="kv">${rows.filter(([, value]) => value !== "" && value != null).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+
+        /** любой клик по «Копировать» / «Скачать» внутри блоков */
+        document.addEventListener("click", (event) => {
+          const copyTarget = event.target.closest("[data-copy-btn]");
+          if (copyTarget) copy(copyTarget.closest("[data-copy]").dataset.copy);
+          const fileButton = event.target.closest("[data-file]");
+          if (fileButton) {
+            download(fileButton.dataset.file, fileButton.dataset.text ?? "");
+            toast("Файл сохранён");
+          }
+          const copyField = event.target.closest("[data-copy-field]");
+          if (copyField) copy($(copyField.dataset.copyField)?.value ?? "");
+          const revoke = event.target.closest("[data-revoke]");
+          if (revoke) revokeSerial(revoke.dataset.revoke);
+        });
+
+        /* ── состояние ───────────────────────────────────────────────────── */
+        function publicConfig() {
+          const raw = read(STORE.public, "");
+          if (!raw) return DEFAULT_PUBLIC;
+          try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed?.keys)) return DEFAULT_PUBLIC;
+            return { keys: parsed.keys, revokedSerials: parsed.revokedSerials ?? [] };
+          } catch { return DEFAULT_PUBLIC; }
+        }
+
+        function privateKey() {
+          const raw = read(STORE.private, "").trim();
+          if (!raw) return null;
+          try {
+            const parsed = JSON.parse(raw);
+            const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
+            const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
+            if (found.length) return { keyId: Number(found[found.length - 1].keyId) || 1, privateKeyBase64: found[found.length - 1].privateKey, publicKey: found[found.length - 1].publicKey ?? "" };
+          } catch { /* не JSON — значит вставили голую base64-строку */ }
+          if (/^[A-Za-z0-9+/=]{60,}$/.test(raw)) return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "" };
+          return null;
+        }
+
+        async function renderChips() {
+          const keys = publicConfig();
+          const secret = privateKey();
+          let keyMatches = false;
+          let keyNote = "нет";
+          if (secret) {
+            const proof = await AGRO.matchKey({ privateKeyBase64: secret.privateKeyBase64, keys: keys.keys });
+            keyMatches = proof.ok;
+            keyNote = proof.ok ? `подходит к key-id=${proof.keyId}` : proof.message;
+          }
+          $("chips").innerHTML = [
+            [true, "подпись кода", (await AGRO.signingMode()) === "webcrypto" ? "браузер (WebCrypto Ed25519)" : "встроенный в страницу Ed25519"],
+            [Boolean(secret), "закрытый ключ", `${keyNote}`],
+            [keys.keys.length > 0, "открытый ключ", `${keys.keys.map((entry) => `key-id=${entry.keyId}`).join(", ")} · отзывов ${keys.revokedSerials.length}`],
+            [true, "журнал", `${ledgerRows().length} записей`],
+          ]
+            .map(([ok, label, value]) => `<span class="chip ${ok ? "ok" : "bad"}"><i></i>${esc(label)}: <b>${esc(value)}</b></span>`)
+            .join("");
+          $("keyHint").textContent = secret ? `Ключ загружен: ${keyNote}.` : "Ключ не загружен — выдача кодов недоступна, проверка кодов работает.";
+        }
+
+        /* ── журнал ─────────────────────────────────────────────────────── */
+        function ledgerRows() {
+          const rows = AGRO.ledgerParse(read(STORE.ledger, ""));
+          const revoked = new Set(publicConfig().revokedSerials.map((value) => String(value).toLowerCase()));
+          return rows.map((row) => (revoked.has(row.serial) ? { ...row, status: "revoked" } : row));
+        }
+
+        function saveLedger(rows) {
+          write(STORE.ledger, AGRO.ledgerSerialize(rows));
+        }
+
+        function renderLedger() {
+          const query = $("ledgerSearch").value.trim().toLowerCase();
+          const rows = ledgerRows().filter((row) => !query || JSON.stringify(row).toLowerCase().includes(query));
+          $("ledger").innerHTML = rows.length
+            ? `<table><thead><tr><th>когда</th><th>кому</th><th>компьютер</th><th>тип</th><th>серийник</th><th>статус</th><th>код</th><th></th></tr></thead><tbody>${rows
+                .map(
+                  (row) => `<tr>
+                    <td class="mono">${esc(row.issuedAt)}</td>
+                    <td>${esc(row.name || "—")}${row.phone ? `<div class="hint">${esc(row.phone)}</div>` : ""}${row.email ? `<div class="hint">${esc(row.email)}</div>` : ""}</td>
+                    <td class="mono">${esc(row.shortId ? AGRO.prettyShortId(row.shortId) : "—")}</td>
+                    <td>${row.kind === "universal" ? "универсальный" : "персональный"}</td>
+                    <td class="mono">${esc(AGRO.prettySerial(row.serial))}</td>
+                    <td>${row.status === "revoked" ? `<span class="bad-text">отозван ${esc(row.revokedAt)}</span>` : "действует"}</td>
+                    <td><button class="btn tiny" data-copy="${esc(row.code)}" data-copy-btn>код</button></td>
+                    <td>${row.status === "revoked" ? "" : `<button class="btn tiny warn" data-revoke="${esc(row.serial)}">Отозвать</button>`}</td>
+                  </tr>`,
+                )
+                .reverse()
+                .join("")}</tbody></table>`
+            : `<p class="hint">Записей нет. Выдайте первый код — он появится здесь (в браузере этого компьютера).</p>`;
+          renderChips();
+        }
+
+        function revokeSerial(serial) {
+          if (!confirm(`Отозвать серийник ${AGRO.prettySerial(serial)}?\n\nОн попадёт в список отзыва на этом компьютере и в CSV журнала. Чтобы код перестал работать у покупателя, список должен попасть в electron/license/keys.cjs и в следующую сборку EXE (в проекте: npm run license:revoke -- ${serial}).`)) return;
+          const config = publicConfig();
+          const list = new Set(config.revokedSerials);
+          list.add(String(serial).toLowerCase());
+          write(STORE.public, JSON.stringify({ ...config, revokedSerials: [...list].sort() }, null, 2));
+          $("publicKeys").value = JSON.stringify(publicConfig(), null, 2);
+          toast("Серийник добавлен в список отзыва");
+          renderLedger();
+        }
+
+        /* ── выдача ─────────────────────────────────────────────────────── */
+        let parsed = null;
+
+        $("parse").addEventListener("click", async () => {
+          const text = $("requestText").value;
+          if (!text.trim() && !$("machineCode").value.trim()) {
+            $("parseResult").textContent = "Сначала вставьте, что прислал пользователь, или код компьютера.";
+            return;
+          }
+          parsed = $("machineCode").value.trim()
+            ? await AGRO.resolveBindTarget($("machineCode").value)
+            : await AGRO.parseRequest(text);
+          if (!parsed.ok) {
+            $("parseResult").innerHTML = `<span class="bad-text">${esc(parsed.message)}</span>`;
+            return;
+          }
+          const pretty = parsed.pretty ?? AGRO.prettyShortId(parsed.shortId);
+          parsed.pretty = pretty;
+          $("machineCode").value = pretty;
+          if (parsed.name && !$("name").value) $("name").value = parsed.name;
+          if (parsed.phone && !$("phone").value) $("phone").value = parsed.phone;
+          if (parsed.email && !$("email").value) $("email").value = parsed.email;
+          $("parseResult").innerHTML =
+            `Код компьютера: <b class="mono">${esc(pretty)}</b>${parsed.version ? ` · приложение ${esc(parsed.version)}` : ""}${parsed.phone ? ` · ${esc(parsed.phone)}` : ""}${parsed.email ? ` · ${esc(parsed.email)}` : ""}` +
+            (parsed.conflicts?.length ? `<div class="warn-box">${parsed.conflicts.map((line) => esc(line)).join("<br>")}</div>` : "");
+        });
+
+        $("issue").addEventListener("click", async () => {
+          $("issueHint").textContent = "Подписываем…";
+          const secret = privateKey();
+          if (!secret) {
+            box($("result"), `<h3>Нужен закрытый ключ</h3><p>Откройте вкладку «Ключи» и вставьте содержимое <span class="mono">secrets/license-key.json</span>. Без него код выписать нельзя — это защита от подделки: в приложении лежит только открытый ключ.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          if (typeof BigInt !== "function") {
+            box($("result"), `<h3>Браузер слишком старый</h3><p>Подписи кода нужен BigInt — он есть в Chrome 67+, Firefox 68+, Safari 14+ (2019−2020 год). Или выдавайте код из проекта: <span class="mono">npm run station</span> — там подпись считает Node.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const machineInput = $("machineCode").value.trim();
+          const source = machineInput || $("requestText").value;
+          const target = machineInput ? await AGRO.resolveBindTarget(machineInput) : await AGRO.parseRequest(source);
+          if (!target.ok) {
+            box($("result"), `<h3>Не нашёл код компьютера</h3><p class="bad-text">${esc(target.message)}</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const shortId = target.shortId ?? target;
+          const universal = $("universal").checked;
+          const config = publicConfig();
+          if (!config.keys.some((entry) => Number(entry.keyId) === Number(secret.keyId))) {
+            box($("result"), `<h3>Ключ не добавлен в приложение</h3><p>Закрытый ключ с key-id=${esc(secret.keyId)} не имеет открытого ключа в списке. Приложение такой код не примет: обновите список на вкладке «Ключи» или выполните в проекте <span class="mono">npm run license:keys</span>.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const issued = await AGRO.issueCode({
+            privateKeyBase64: secret.privateKeyBase64,
+            publicKeyBase64: secret.publicKey,
+            keys: config.keys,
+            keyId: secret.keyId,
+            bound: !universal,
+            shortId: universal ? "" : shortId,
+          });
+          // обязательно сверяем результат: код должен пройти проверку тем же списком ключей
+          const check = await AGRO.verifyCode({ code: issued.code, keys: config.keys, machineShortId: universal ? "" : shortId, revokedSerials: config.revokedSerials });
+          if (!check.ok) {
+            box($("result"), `<h3>Выданный код не прошёл проверку</h3><p class="bad-text">${esc(check.message ?? check.reason)}</p><p class="hint">Значит браузерная копия формата кода разошлась с приложением — используйте станцию из проекта: <span class="mono">npm run station</span>.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const pretty = AGRO.prettyShortId(shortId);
+          const row = {
+            issuedAt: AGRO.stamp(),
+            serial: issued.serialHex,
+            keyId: secret.keyId,
+            kind: universal ? "universal" : "personal",
+            shortId: universal ? "" : shortId,
+            code: issued.code,
+            name: $("name").value.trim(),
+            phone: $("phone").value.trim(),
+            email: $("email").value.trim(),
+            note: $("note").value.trim(),
+            status: "active",
+            revokedAt: "",
+            replaces: "",
+          };
+          saveLedger([...AGRO.ledgerParse(read(STORE.ledger, "")), row]);
+          const message = AGRO.buyerMessage({ name: row.name, code: issued.code, pretty, serial: AGRO.prettySerial(issued.serialHex), universal });
+          const agrolic = AGRO.agrolicContent({ name: row.name, pretty, serial: AGRO.prettySerial(issued.serialHex), code: issued.code, universal });
+          box(
+            $("result"),
+            `<h3>${universal ? "Универсальный" : "Персональный"} код · бессрочно</h3>
+             ${codeBlock(issued.code)}
+             ${kv([
+               ["Компьютер", universal ? "любой" : `<b class="mono">${esc(pretty)}</b> — на другом этот код не сработает`],
+               ["Серийник", `<span class="mono">${esc(AGRO.prettySerial(issued.serialHex))}</span> · key-id=${esc(secret.keyId)}`],
+               ["Проверка", "подпись сверена открытым ключом приложения ✓"],
+             ])}
+             <div class="row">
+               <button class="btn tiny" data-copy="${esc(message)}" data-copy-btn>Скопировать сообщение</button>
+               <button class="btn tiny" data-file="${esc(AGRO.agrolicName(issued.serialHex))}" data-text="${esc(agrolic)}">Скачать .agrolic</button>
+               <button class="btn tiny" data-copy="${esc(issued.code)}" data-copy-btn>Только код</button>
+             </div>
+             <details open><summary>Сообщение покупателю</summary><pre>${esc(message)}</pre></details>
+             <p class="hint">Журнал: запись сохранена в этом браузере. В общий <span class="mono">secrets/ledger.csv</span> она попадёт из станции проекта (<span class="mono">npm run station</span>).</p>`,
+          );
+          $("issueHint").textContent = `Код выписан для компьютера ${pretty}.`;
+          renderLedger();
+          const link = $("exeLink");
+          if (link) link.click?.();
+        });
+
+        $("reset-form").addEventListener("click", () => {
+          for (const id of ["requestText", "machineCode", "name", "phone", "email", "note", "issueHint", "parseResult"]) $(id).value = "";
+          $("universal").checked = false;
+          $("parseResult").textContent = "";
+          $("issueHint").textContent = "";
+          box($("result"), "Здесь появится код, сообщение покупателю и файл .agrolic.");
+        });
+
+        /* ── проверка кода ──────────────────────────────────────────────── */
+        $("verify").addEventListener("click", async () => {
+          const config = publicConfig();
+          const result = await AGRO.verifyCode({
+            code: $("codeText").value,
+            keys: config.keys,
+            machineShortId: $("verifyMachine").value.trim(),
+            revokedSerials: config.revokedSerials,
+          });
+          if (!result.ok) {
+            box($("verifyResult"), `<h3>Код не принят</h3><p class="bad-text">${esc(result.message ?? result.reason)}</p><p class="hint mono">${esc(result.reason)}</p>`, true);
+            return;
+          }
+          box(
+            $("verifyResult"),
+            `<h3>Код действителен</h3>${codeBlock(result.code)}${kv([
+              ["Продукт", esc(result.license.productName)],
+              ["Серийник", `<span class="mono">${esc(result.license.serial)}</span>`],
+              ["Ключ", `key-id=${esc(result.license.keyId)}`],
+              ["Срок", "бессрочно — дата в коде не кодируется"],
+              ["Привязка", result.license.bound ? "персональный (к компьютеру)" : "универсальный"],
+              ["Отзыв", config.revokedSerials.includes(result.license.serialHex) ? "в списке отзыва" : "не отозван"],
+            ])}`,
+          );
+        });
+
+        /* ── EXE и сброс ─────────────────────────────────────────────────── */
+        function refreshExe() {
+          const url = read(STORE.exeUrl, DEFAULT_EXE_URL);
+          $("exeUrl").value = url;
+          $("exeLink").href = url;
+          $("checkNote").textContent = "В собранных пока релизах этого режима нет: он появится в EXE, который будет собран из ветки с electron/license/checkmode.cjs. До тех пор действуй сбросом файла лицензии (шаг 2).";
+        }
+
+        $("exeUrl").addEventListener("change", () => {
+          write(STORE.exeUrl, $("exeUrl").value.trim());
+          refreshExe();
+        });
+        $("makeCheckName").addEventListener("click", () => copy(`AgroPrognoz-check-${Date.now().toString(36)}.exe`, "Имя проверочного файла скопировано"));
+        $("copyReset").addEventListener("click", () => copy(RESET_COMMAND, "Команда скопирована"));
+
+        /* ── ключи ───────────────────────────────────────────────────────── */
+        $("saveKey").addEventListener("click", async () => {
+          const raw = $("privateKey").value.trim();
+          if (!raw) { toast("Вставьте сначала ключ", ""); return; }
+          let stored = raw;
+          if (raw.startsWith("{") || raw.startsWith("[")) {
+            try { JSON.parse(raw); } catch { toast("Похоже на JSON, но не разбирается"); return; }
+          }
+          write(STORE.private, stored);
+          $("privateKey").value = "";
+          toast("Ключ сохранён в этом браузере");
+          await renderChips();
+        });
+        $("forgetKey").addEventListener("click", () => {
+          forget(STORE.private);
+          toast("Ключ удалён из браузера");
+          renderChips();
+        });
+        $("savePub").addEventListener("click", () => {
+          try {
+            const parsedConfig = JSON.parse($("publicKeys").value);
+            if (!Array.isArray(parsedConfig.keys)) throw new Error("нет массива keys");
+            write(STORE.public, JSON.stringify(parsedConfig, null, 2));
+            $("pubHint").textContent = "Сохранено.";
+            renderChips();
+          } catch (error) {
+            $("pubHint").textContent = `Не JSON: ${error.message}`;
+          }
+        });
+
+        /* ── журнал: кнопки ─────────────────────────────────────────────── */
+        $("ledgerSearch").addEventListener("input", renderLedger);
+        $("ledgerRefresh").addEventListener("click", renderLedger);
+        $("ledgerCsv").addEventListener("click", () => download("agro-activation-ledger.csv", `\uFEFF${AGRO.ledgerSerialize(ledgerRows())}`));
+        $("ledgerClear").addEventListener("click", () => {
+          if (!confirm("Очистить журнал в этом браузере? secrets/ledger.csv проекта затронут не будет.")) return;
+          forget(STORE.ledger);
+          renderLedger();
+        });
+
+        $("tabs").addEventListener("click", (event) => {
+          const button = event.target.closest(".tab");
+          if (!button) return;
+          for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("is-active", tab === button);
+          for (const panel of document.querySelectorAll("main > section")) panel.classList.toggle("is-active", panel.id === `tab-${button.dataset.tab}`);
+          if (button.dataset.tab === "ledger") renderLedger();
+        });
+
+        $("publicKeys").value = JSON.stringify(publicConfig(), null, 2);
+        refreshExe();
+        renderChips();
+        renderLedger();
+      })();
+    </script>
+  </body>
+</html>

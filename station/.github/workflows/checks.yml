@@ -1,0 +1,80 @@
+# Проверки станции «Активация ключей».
+
+# Тесты станции не требуют ни сети, ни проекта приложения: закрытый ключ
+# выдумывается, каталоги — временные. `sync:check` запускается только когда
+# рядом есть клон Weather_Cover (в отдельном репозитории сравнивать не с чем,
+# поэтому он в CI на GitHub Pages-подобном запуске просто пропускается).
+
+name: station-checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  test:
+    name: Тесты станции
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Автономная страница (один файл) обязана совпадать со сборкой из vendor/.
+      - name: Автономная страница актуальна
+        run: node scripts/build-standalone.mjs --check
+
+      # Зависимостей нет намеренно: станция должна запускаться одним `node`
+      # на компьютере владельца, без npm install.
+      - name: Проверка, что зависимостей нет
+        run: |
+          node -e '
+            const pkg = require("./package.json");
+            const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+            const names = Object.keys(deps);
+            if (names.length) { console.error("зависимости появились: " + names.join(", ")); process.exit(1); }
+            console.log("зависимостей нет — ок");
+          '
+
+      - name: Тесты (разбор заявок, выдача, журнал, HTTP-доступ)
+        run: npm test
+
+      - name: Проверка закрытого ключа в репозитории быть не может
+        run: |
+          if git ls-files | grep -Ei 'license-key|ledger\.csv|\.agrolic$|^data/|^out/'; then
+            echo "✘ в репозиторий станции попал секрет или журнал выдачи"; exit 1
+          fi
+          # Подпись ищется и здесь, в тексте проверки, поэтому .github исключён.
+          if grep -rIl --exclude-dir=.git --exclude-dir=.github --exclude-dir=node_modules "MC4CAQAwBQYDK2Vw" . >/dev/null 2>&1; then
+            echo "✘ в файлах станции найден закрытый ключ Ed25519 (PKCS#8)"; exit 1
+          fi
+          echo "секретов нет — ок"
+
+  vendor:
+    name: Копии кода приложения актуальны
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Igorr112323/Weather_Cover
+          path: Weather_Cover
+
+      - uses: actions/checkout@v4
+        with:
+          path: station
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: sync --check
+        working-directory: station
+        run: node scripts/sync-vendor.mjs --check --repo ../Weather_Cover

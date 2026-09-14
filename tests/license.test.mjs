@@ -343,6 +343,7 @@ describe("лицензия бессрочная: дат нет ни в коде,
     "electron/license/integrity.cjs",
     "electron/license/keys.cjs",
     "electron/license/request.cjs",
+    "electron/license/checkmode.cjs",
   ];
 
   it("в модулях лицензирования нет обращений к часам", () => {

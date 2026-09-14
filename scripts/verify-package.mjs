@@ -103,7 +103,13 @@ try {
   check("исходников интерфейса (src/) в упаковке нет", !files.some((item) => item.startsWith("src/")));
   check("скриптов сборки в упаковке нет", !files.some((item) => item.startsWith("scripts/")));
   check("тестов в упаковке нет", !files.some((item) => item.startsWith("tests/")));
-  check("студии лицензий в упаковке нет", !files.some((item) => item.startsWith("scripts/license-studio") || item.startsWith("scripts/license")));
+  // Инструменты владельца (студия, генератор кодов, доктор активации, веб-станция)
+  // не должны попадать в EXE: покупателю они ни к чему, а лишний код — лишняя
+  // поверхность для анализа.
+  check(
+    "студии лицензий и станции выдачи в упаковке нет",
+    !files.some((item) => /^(scripts\/license|scripts\/activation-doctor|station\/|vendor\/)/.test(item)),
+  );
 
   console.log("\nАнти-слив (ключи, журнал, контакты владельца):");
   check(

@@ -1,3 +1,5 @@
+/* vendored: точная копия electron/license/keys.cjs из проекта Weather_Cover.
+ * Не править руками — обновлять скриптом scripts/sync-vendor.mjs. */
 /**
  * Открытые ключи лицензий и список отозванных лицензий.
  *

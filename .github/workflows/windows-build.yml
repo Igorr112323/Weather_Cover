@@ -62,7 +62,34 @@ jobs:
       - name: Unit-тесты (включая лицензию и защиту)
         run: |
           set -o pipefail
-          npm test 2>&1 | tee ci-logs/test.log
+          if ! npm test 2>&1 | tee ci-logs/test.log; then
+            # Выжимка падений — в конец лога: автоотчёт scripts/ci-report.mjs
+            # приводит хвост, а сами логи Actions видны только через отдельный хост.
+            echo "===== ПАДАЮЩИЕ ТЕСТЫ (выжимка) ====="
+            grep -E "^ *not ok|error: |AssertionError|expected|actual" ci-logs/test.log | tail -60
+            exit 1
+          fi
+
+      # Обе автономные страницы (станция выдачи и личная страница кодов) собираются
+      # из кода приложения: устаревший файл = покупатель получил бы код, который
+      # EXE не примет. Поэтому проверка актуальности и тесты — до сборки релиза.
+      # Три отдельных шага, а не один: логи Actions из песочницы не читаются
+      # (журнал отдаётся на отдельный blob-хост), поэтому по имени покрасневшего шага
+      # что именно разошлось — копии кода, актуальность страниц или их тесты.
+      - name: "Страницы: копии кода приложения (vendor)"
+        run: node station/scripts/sync-vendor.mjs --check --repo .
+
+      - name: "Страницы: актуальность сборки (standalone + personal)"
+        run: node station/scripts/build-standalone.mjs --check
+
+      - name: "Страницы: тесты выдачи и проверки кода (включая встроенный Ed25519)"
+        run: |
+          set -o pipefail
+          if ! node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs station/tests/ed25519.test.mjs 2>&1 | tee ci-logs/station.log; then
+            echo "===== ПАДАЮЩИЕ ТЕСТЫ СТРАНИЦ (выжимка) ====="
+            grep -E "^ *not ok|error: |AssertionError|mismatch" ci-logs/station.log | tail -40
+            exit 1
+          fi
 
       - name: Сборка renderer
         run: |

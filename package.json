@@ -1,7 +1,7 @@
 {
   "name": "agroprognoz-corn",
   "productName": "AgroPrognoz",
-  "version": "0.2.1",
+  "version": "0.3.5",
   "private": true,
   "type": "module",
   "description": "АгроПрогноз — Кукуруза: выбор территории, параметры прогноза и погодные показатели для выращивания кукурузы.",
@@ -19,7 +19,7 @@
     "preview": "node scripts/preview.mjs",
     "start": "electron .",
     "build": "vite build",
-    "test": "node --test tests/date-period.test.mjs tests/month-input.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs tests/license.test.mjs tests/license-studio.test.mjs",
+    "test": "node --test tests/date-period.test.mjs tests/month-input.test.mjs tests/forecast-engine.test.mjs tests/database.test.mjs tests/csv.test.mjs tests/license.test.mjs tests/license-studio.test.mjs tests/activation-doctor.test.mjs",
     "test:smoke": "node tests/smoke/run-smoke.mjs",
     "test:gate": "node tests/smoke/run-gate.mjs",
     "test:activation": "node tests/smoke/run-activation.mjs",
@@ -32,7 +32,17 @@
     "license:revoke": "node scripts/license-tool.mjs revoke",
     "license:keys": "node scripts/license-tool.mjs keys",
     "license:fingerprint": "node scripts/license-tool.mjs fingerprint",
-    "dist:win": "node scripts/patch-portable-nsi.mjs && npm run harden && electron-builder --win portable"
+    "license:status": "node scripts/activation-doctor.mjs status",
+    "license:machine": "node scripts/activation-doctor.mjs machine",
+    "license:reset": "node scripts/activation-doctor.mjs reset",
+    "activation:selftest": "node scripts/activation-doctor.mjs selftest",
+    "station": "node station/src/main.mjs",
+    "station:test": "node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs",
+    "station:export": "node scripts/export-station.mjs",
+    "station:sync": "node station/scripts/sync-vendor.mjs",
+    "dist:win": "node scripts/patch-portable-nsi.mjs && npm run harden && electron-builder --win portable",
+    "station:standalone": "node station/scripts/build-standalone.mjs",
+    "license:page": "node station/scripts/build-personal.mjs"
   },
   "dependencies": {},
   "devDependencies": {

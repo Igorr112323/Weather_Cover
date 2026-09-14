@@ -94,13 +94,14 @@ try {
 
   const structure = await page.evaluate(() => ({
     title: document.querySelector(".activate__card .page-title")?.textContent ?? "",
-    lead: document.querySelector(".activate__lead")?.textContent ?? "",
+    cardText: document.querySelector(".activate__card")?.innerText ?? "",
     hasInput: Boolean(document.querySelector("#activation-code")),
     sidebar: Boolean(document.querySelector(".sidebar")),
     navItems: document.querySelectorAll(".nav-item").length,
-    machineId: document.querySelector(".activate__machine-id")?.textContent ?? "",
-    details: document.querySelector(".activate__details")?.innerText ?? "",
-    buttons: [...document.querySelectorAll(".activate__actions .btn__label")].map((node) => node.textContent),
+    buttons: [...document.querySelectorAll(".activate .btn__label")].map((node) => node.textContent),
+    hiddenBlocks: ["activate__lead", "activate__details", "activate__more", "activate__request", "activate__machine-id"].filter((cls) =>
+      Boolean(document.querySelector(`.${cls}`)),
+    ),
     drag: Boolean(document.querySelector(".activate .window-drag")),
   }));
 
@@ -108,13 +109,13 @@ try {
   check("приложение не построено вместо активации", structure.sidebar === false && structure.navItems === 0);
   check("поле кода на месте", structure.hasInput === true);
   check("полоса перетаскивания окна есть", structure.drag === true);
-  check("идентификатор компьютера показан", structure.machineId === "DEMO-DEMO", structure.machineId);
-  check("три кнопки активации", structure.buttons.length === 3, structure.buttons.join(", "));
-  check("в тексте экрана сказано про бессрочность", /бессрочн/i.test(structure.lead) && /бессрочн/i.test(structure.details));
+  // Экран — ровно два действия: вставить код и скопировать код машины.
+  check("на экране две кнопки: «Активировать» и «Скопировать»", structure.buttons.join(",") === "Активировать,Скопировать", structure.buttons.join(", "));
+  check("поясняющих абзацев, блоков «условия/серийник/версия», катов и заявки нет", structure.hiddenBlocks.length === 0, structure.hiddenBlocks.join(", "));
   check(
-    "на экране нет ни одной даты и ни одного срока",
-    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(structure.details) && !/дн(ей|я|и)|осталось|истека|продл/i.test(structure.details),
-    structure.details.replace(/\n/g, " | "),
+    "на экране нет ни одной даты, ни срока, ни «бессрочно» лишнего текста",
+    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(structure.cardText) && !/дн(ей|я|и)|осталось|истека|продл|Условия лицензии|Срок действия/i.test(structure.cardText),
+    structure.cardText.replace(/\n/g, " | ").slice(0, 160),
   );
 
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-empty.png") });
@@ -163,71 +164,45 @@ try {
   check("неполный код отклоняется на месте", /неполн|целиком/i.test(shortError), shortError);
   check("счётчик после обрезки кода", (await page.textContent(".activate__count")) === "4 / 128");
 
-  // Вставка из буфера: в headless-браузере буфер пуст — экран не должен упасть.
+  // Вставка в поле форматируется сама (кнопки «из буфера» на экране нет):
+  // проверка, что Ctrl+V-сценарий (вставка текста с мусором) не ломает ввод.
+  await page.fill("#activation-code", "");
+  await page.keyboard.type("agro 1234");
+  await page.dispatchEvent("#activation-code", "blur");
+  check("в поле остаётся то, что набрано", (await page.inputValue("#activation-code")).replace(/\s/g, "").length >= 9, await page.inputValue("#activation-code"));
+
   await page.fill("#activation-code", FULL_CODE);
-  await page.getByRole("button", { name: /буфер/i }).click();
-  await page.waitForTimeout(600);
-  check("кнопка вставки не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 
-  // Активация файлом в браузере: системного диалога нет, отказ обязателен.
-  await page.getByRole("button", { name: /файлом/i }).click();
-  await page.waitForTimeout(600);
-  check("кнопка файла не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
+  /* ── Код компьютера: нередактируемое поле и копирование ────────────────── */
 
-  /* ── Заявка владельцу ─────────────────────────────────────────────────── */
-
-  // Кнопка формирует текст заявки (код компьютера, полный идентификатор,
-  // версия) и открывает каналы связи. Контакты владельца в renderer не
-  // хранятся — в браузере честно говорится, что мессенджер откроется в
-  // приложении, а копирование и файл заявки работают уже здесь.
-  const requestToggle = page.getByRole("button", { name: "Отправить заявку владельцу", exact: true });
-  check("кнопка «Отправить заявку владельцу» на экране", (await requestToggle.count()) === 1);
-  await requestToggle.click();
-  await page.waitForSelector("[data-request-panel]:not([hidden])", { timeout: 10000 });
-
-  const request = await page.evaluate(() => {
-    const text = document.querySelector("[data-request-text]")?.value ?? "";
-    const channels = [...document.querySelectorAll("[data-request-channel]")].filter((node) => node.hidden === false).map((node) => node.textContent.trim());
+  const machine = await page.evaluate(() => {
+    const field = document.querySelector("[data-activate-machine]");
     return {
-      text,
-      channels,
-      hasCopy: Boolean(document.querySelector("[data-request-copy]")),
-      hasSave: Boolean(document.querySelector("[data-request-save]")),
-      contact: document.querySelector("[data-request-contact]")?.textContent ?? "",
+      value: field?.value ?? "",
+      readOnly: field?.readOnly === true,
+      disabled: field?.disabled === true,
+      hasCopy: Boolean(document.querySelector("[data-activate-copy]")),
+      labels: [...document.querySelectorAll(".activate .btn__label")].map((node) => node.textContent),
+      extras: [...document.querySelectorAll(
+        "[data-request-toggle],[data-request-panel],[data-request-copy],[data-request-save],[data-request-channel],[data-activate-file],[data-activate-more]",
+      )].map((node) => node.className || node.tagName),
     };
   });
-  check("панель заявки открылась с текстом заявки", request.text.length > 40, request.text.slice(0, 60));
-  check("в заявке есть код компьютера", request.text.includes("DEMO-DEMO"), request.text.split("\n")[2] ?? "");
-  check("в заявке есть полный идентификатор компьютера", request.text.includes("de".repeat(32)));
-  check("в заявке есть версия приложения", /Приложение: .*0\.\d+\.\d+/.test(request.text), request.text.split("\n")[1] ?? "");
-  check("в заявке сказано про бессрочную лицензию", /бессрочн/i.test(request.text));
   check(
-    "в заявке нет ни одной даты и срока",
-    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(request.text) && !/действует до|истека|осталось/i.test(request.text),
+    "код компьютера в нередактируемом поле",
+    machine.value === "DEMO-DEMO" && machine.readOnly === true && machine.disabled === false,
+    `${machine.value} readOnly=${machine.readOnly} disabled=${machine.disabled}`,
   );
-  check("каналы заявки показаны", ["Telegram", "WhatsApp", "Почта"].every((label) => request.channels.includes(label)), request.channels.join(","));
-  check("есть копирование заявки и файл .agrorequest", request.hasCopy && request.hasSave);
+  check("на экране по-прежнему две кнопки", machine.labels.join(",") === "Активировать,Скопировать", machine.labels.join(", "));
+  check("кнопка копирования есть, заявки и «активации файлом» нет", machine.hasCopy === true && machine.extras.length === 0, machine.extras.join(", "));
 
-  await page.screenshot({ path: path.join(SHOTS_DIR, "activation-request.png") });
-
-  // Копирование в headless-браузере может быть запрещено: экран обязан
-  // пережить это без падения (сообщение — тост, не ошибка консоли).
-  await page.click("[data-request-copy]");
-  await page.waitForTimeout(400);
-  check("копирование заявки не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
-
-  // Канал связи в браузере открыть нельзя (нет main process) — честный отказ.
-  await page.click('[data-request-channel="telegram"]');
-  await page.waitForTimeout(400);
-  check("кнопка мессенджера не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
-  const browserNotice = await page.evaluate(() => [...document.querySelectorAll(".toast__msg")].map((node) => node.textContent).join(" "));
-  check("в браузере сказано, что канал откроется в приложении", /приложении|AgroPrognoz\.exe/i.test(browserNotice), browserNotice.slice(0, 80));
-
-  // Файл заявки: в браузере это обычная загрузка .agrorequest.
-  const downloadPromise = page.waitForEvent("download", { timeout: 8000 }).catch(() => null);
-  await page.click("[data-request-save]");
-  const download = await downloadPromise;
-  check("файл .agrorequest доступен для сохранения", download !== null && download.suggestedFilename().endsWith(".agrorequest"), download?.suggestedFilename() ?? "загрузки не было");
+  // Копирование в headless-браузере может быть запрещено политикой буфера:
+  // экран обязан пережить это без падения — ответ идёт тостом, не ошибкой.
+  await page.click("[data-activate-copy]");
+  await page.waitForTimeout(500);
+  check("кнопка копирования не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
+  const copyToast = await page.evaluate(() => [...document.querySelectorAll(".toast__msg")].map((node) => node.textContent).join(" "));
+  check("на копирование есть ответ", /скопирован|Ctrl\+C/i.test(copyToast), copyToast.slice(0, 90));
 
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-filled.png") });
 
@@ -237,12 +212,17 @@ try {
   const tampered = await readNotes(page);
   check("при порче файлов показано предупреждение", /изменены/i.test(tampered.tamper), tampered.tamper);
   check("предупреждение о порче видимо (не скрыто стилем)", tampered.tamperVisible === true);
-  const disabled = await page.evaluate(() =>
-    [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
+  const disabled = await page.evaluate(() => ({
+    actions: [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
+    code: document.querySelector("#activation-code")?.disabled === true,
+    machine: document.querySelector("[data-activate-machine]")?.disabled === true,
+  }));
+  check(
+    "кнопка активации и поле кода заблокированы при порче",
+    disabled.actions.length === 1 && disabled.actions.every(Boolean) && disabled.code === true,
+    JSON.stringify(disabled),
   );
-  check("кнопки активации заблокированы при порче", disabled.length === 3 && disabled.every(Boolean), String(disabled));
-  const requestDisabled = await page.evaluate(() => document.querySelector("[data-request-toggle]")?.disabled === true);
-  check("кнопка заявки тоже заблокирована при порче", requestDisabled === true);
+  check("при порче код компьютера всё равно можно скопировать", disabled.machine === false);
   check("при порче интерфейс приложения не построен", (await page.evaluate(() => Boolean(document.querySelector(".sidebar")))) === false);
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-tampered.png") });
 

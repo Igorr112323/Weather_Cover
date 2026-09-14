@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Активация ключей — АгроПрогноз — Кукуруза</title>
+    <style>
+      :root {
+        --bg: #f4f7f2;
+        --panel: #fff;
+        --ink: #17251c;
+        --muted: #5d6f62;
+        --line: #d8e2d8;
+        --accent: #1f6f43;
+        --accent-soft: #e7f3ea;
+        --warn: #a35a12;
+        --bad: #a4271f;
+        --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      }
+      header {
+        display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+        padding: 16px 22px; background: var(--panel); border-bottom: 1px solid var(--line);
+      }
+      .brand { display: flex; gap: 12px; align-items: center; }
+      .logo {
+        display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px;
+        background: var(--accent); color: #fff; font: 700 12px/1 var(--mono);
+      }
+      h1 { margin: 0; font-size: 18px; }
+      .sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid var(--line);
+        border-radius: 999px; font-size: 12.5px; color: var(--muted); background: #fbfdfb;
+      }
+      .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+      .chip.ok i { background: var(--accent); }
+      .chip.bad i { background: var(--bad); }
+      .chip b { color: var(--ink); }
+      nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 22px 0; }
+      .tab {
+        padding: 9px 13px; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0;
+        background: #eaf0e9; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
+      }
+      .tab.is-active { background: var(--panel); color: var(--accent); }
+      main { padding: 0 22px 26px; }
+      section {
+        display: none; padding: 18px; border: 1px solid var(--line);
+        border-radius: 0 12px 12px 12px; background: var(--panel);
+      }
+      section.is-active { display: block; }
+      h2 { margin: 0 0 8px; font-size: 15px; }
+      h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
+      p, li { font-size: 14px; }
+      .hint { color: var(--muted); font-size: 13px; margin: 6px 0; }
+      .bad-text { color: var(--bad); }
+      .warn-box {
+        padding: 9px 11px; border-left: 3px solid var(--warn); background: #fff8ee;
+        color: var(--warn); border-radius: 0 8px 8px 0; font-size: 13px; margin: 8px 0;
+      }
+      .field { display: block; margin-bottom: 11px; }
+      .field > span { display: block; margin-bottom: 5px; font-size: 12.5px; color: var(--muted); }
+      textarea, input, select {
+        width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px;
+        background: #fbfdfb; color: var(--ink); font: inherit;
+      }
+      textarea { font-family: var(--mono); font-size: 13px; resize: vertical; }
+      .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+      .fields { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .btn {
+        padding: 9px 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+        font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
+      }
+      .btn:hover { border-color: var(--accent); color: var(--accent); }
+      .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .btn.warn { background: #fff6ea; border-color: #e6c48f; color: var(--warn); }
+      .btn.tiny { padding: 5px 9px; font-size: 12.5px; }
+      .code {
+        display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px dashed var(--accent);
+        border-radius: 10px; background: var(--accent-soft); margin: 0 0 12px;
+      }
+      .code code {
+        flex: 1 1 auto; font-family: var(--mono); font-size: 13px; line-height: 1.7;
+        white-space: pre-wrap; word-break: break-all;
+      }
+      .kv { display: grid; gap: 4px 12px; grid-template-columns: max-content 1fr; margin: 0 0 12px; font-size: 13.5px; }
+      .kv dt { color: var(--muted); }
+      .kv dd { margin: 0; }
+      pre {
+        margin: 8px 0; padding: 10px; border-radius: 9px; background: #f2f6f1;
+        font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; overflow-x: auto;
+      }
+      .cmd { border-left: 3px solid var(--accent); }
+      .box { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdfb; margin: 10px 0; overflow-wrap: anywhere; }
+      .box.is-error { border-color: #e6b6b1; background: #fdf6f5; }
+      .mono { font-family: var(--mono); }
+      .table { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { background: #f4f8f3; color: var(--muted); font-size: 11.5px; text-transform: uppercase; }
+      details { margin: 8px 0; }
+      summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+      .toast {
+        position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 11px 16px;
+        border-radius: 10px; background: var(--ink); color: #fff; font-size: 13px; box-shadow: 0 8px 30px rgba(0,0,0,.24);
+      }
+      .toast[hidden] { display: none; }
+      ol.steps { padding-left: 20px; }
+      ol.steps > li { margin-bottom: 10px; }
+      .grid2 { display: grid; gap: 16px; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); }
+      @media (max-width: 940px) { .grid2 { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="logo">AKE</span>
+        <div>
+          <h1>Активация ключей</h1>
+          <p class="sub">
+            Работает офлайн прямо в браузере: закрытый ключ никуда не отправляется, подписывает код этот файл.
+            Лицензии бессрочные — поля «действует до» не существует.
+          </p>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </header>
+
+    <nav id="tabs">
+      <button class="tab is-active" data-tab="issue">1. Заявка → код</button>
+      <button class="tab" data-tab="exe">2. EXE и проверка активации</button>
+      <button class="tab" data-tab="verify">Проверка кода</button>
+      <button class="tab" data-tab="ledger">Журнал</button>
+      <button class="tab" data-tab="keys">Ключи</button>
+    </nav>
+
+    <main>
+      <!-- 1. ВЫДАЧА -->
+      <section class="is-active" id="tab-issue">
+        <div class="grid2">
+          <div>
+            <h2>Что прислал пользователь</h2>
+            <label class="field">
+              <span>Текст заявки, сообщение в мессенджере или содержимое файла .agrorequest — можно вставить как есть</span>
+              <textarea id="requestText" rows="8" placeholder="Заявка на персональный код активации&#10;Приложение: АгроПрогноз — Кукуруза 0.2.1&#10;Код компьютера: ZZG5-9ZKT&#10;Меня зовут Иван, +7 960 484-34-63"></textarea>
+            </label>
+            <div class="row">
+              <button class="btn" id="parse">Разобрать заявку</button>
+              <input id="machineCode" class="mono" placeholder="или введите код компьютера: ZZG5-9ZKT / 64-символьный id" />
+            </div>
+            <div class="hint" id="parseResult"></div>
+
+            <div class="fields">
+              <label class="field"><span>Имя покупателя</span><input id="name" placeholder="Иван" /></label>
+              <label class="field"><span>Телефон</span><input id="phone" placeholder="+7 960 484-34-63" /></label>
+              <label class="field"><span>Почта</span><input id="email" placeholder="buyer@mail.ru" /></label>
+              <label class="field"><span>Пометка</span><input id="note" placeholder="заказ №14" /></label>
+            </div>
+            <label class="row"><input type="checkbox" id="universal" style="width:auto" /> Универсальный код (на любом компьютере — нужен только в исключительных случаях)</label>
+            <div class="row">
+              <button class="btn primary" id="issue">Получить код активации</button>
+              <button class="btn tiny" id="reset-form">Очистить</button>
+            </div>
+            <div class="hint" id="issueHint"></div>
+          </div>
+          <div>
+            <h2>Результат</h2>
+            <div class="box" id="result">Здесь появится код, сообщение покупателю и файл .agrolic. Нужен закрытый ключ — вкладка «Ключи».</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. EXE -->
+      <section id="tab-exe">
+        <h2>EXE, который запрашивает код активации</h2>
+        <ol class="steps">
+          <li>Скачай установочный файл (это официальный portable EXE, установка не нужна):
+            <div class="row"><a class="btn primary" id="exeLink" href="#" target="_blank" rel="noreferrer">Скачать AgroPrognoz-portable.exe</a></div>
+            <label class="field"><span>Ссылка на EXE (можно поменять на свой релиз или на собранный CI проверочный файл)</span>
+              <input id="exeUrl" class="mono" /></label>
+          </li>
+          <li>
+            <b>Если ты запускаешь EXE на компьютере, где активация уже была</b> — файл лицензии один на все копии программы,
+            поэтому код он не спросит. Чтобы увидеть экран ввода кода, выполни в cmd:
+            <pre class="cmd">move "%APPDATA%\AgroPrognoz\agroprognoz.license" "%APPDATA%\AgroPrognoz\agroprognoz.license.bak"</pre>
+            Вернуть как было: <span class="mono">move</span> обратно (переименовать <span class="mono">.bak</span> в <span class="mono">agroprognoz.license</span>).
+          </li>
+          <li>
+            Проверочный режим (каждая новая копия спрашивает код, твоя активация не трогается) работает в сборках, где есть
+            <span class="mono">electron/license/checkmode.cjs</span>. Собери такую копию сам или переименуй EXE:
+            <pre class="cmd">copy release\AgroPrognoz-0.2.1-portable.exe release\AgroPrognoz-check-demo.exe
+release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
+            <div class="hint" id="checkNote"></div>
+          </li>
+        </ol>
+        <div class="row">
+          <button class="btn tiny" id="makeCheckName">Скопировать имя проверочного файла</button>
+          <button class="btn tiny" id="copyReset">Скопировать команду сброса</button>
+        </div>
+      </section>
+
+      <!-- 3. ПРОВЕРКА -->
+      <section id="tab-verify">
+        <div class="grid2">
+          <div>
+            <h2>Проверить код активации</h2>
+            <label class="field"><span>Код (можно вместе с письмом — лишний текст будет пропущен)</span>
+              <textarea id="codeText" rows="6" class="mono" placeholder="AGRO-XXXXXXXX-XXXXXXXX-…"></textarea></label>
+            <div class="row">
+              <input id="verifyMachine" class="mono" placeholder="код компьютера для сверки привязки (необязательно)" />
+              <button class="btn primary" id="verify">Проверить</button>
+            </div>
+            <p class="hint">Проверка идёт тем же алгоритмом, что и в приложении: подпись Ed25519, продукт, список отзыва, отпечаток компьютера. Дат станция не читает — лицензия бессрочная.</p>
+          </div>
+          <div><div class="box" id="verifyResult">Результат проверки.</div></div>
+        </div>
+      </section>
+
+      <!-- 4. ЖУРНАЛ -->
+      <section id="tab-ledger">
+        <div class="row">
+          <input id="ledgerSearch" placeholder="Поиск: имя, телефон, серийник, код компьютера…" style="max-width:420px" />
+          <button class="btn tiny" id="ledgerRefresh">Обновить</button>
+          <button class="btn tiny" id="ledgerCsv">Скачать CSV</button>
+          <button class="btn tiny warn" id="ledgerClear">Очистить журнал</button>
+        </div>
+        <div class="hint">
+          Журнал хранится в этом браузере (localStorage) — это учёт выдачи. Чтобы он попадал в общий
+          <span class="mono">secrets/ledger.csv</span> проекта, используй студию/станцию:
+          <span class="mono">npm run license:studio</span> или <span class="mono">npm run station</span>.
+        </div>
+        <div class="table" id="ledger"></div>
+      </section>
+
+      <!-- 5. КЛЮЧИ -->
+      <section id="tab-keys">
+        <div class="grid2">
+          <div>
+            <h2>Закрытый ключ (для выдачи кодов)</h2>
+            <p class="hint">
+              Вставь содержимое <span class="mono">secrets/license-key.json</span> из проекта приложения — или одну строку base64
+              из поля <span class="mono">privateKey</span>. Ключ останется в этом браузере (localStorage) и никуда не уйдёт:
+              страница работает без сервера и без интернета. Секретные каталоги в git не попадают.
+            </p>
+            <label class="field"><span>Закрытый ключ</span>
+              <textarea id="privateKey" rows="4" class="mono" placeholder='{"keys":[{"keyId":1,"privateKey":"MC4CAQAw…"}]} или MC4CAQAw…'></textarea></label>
+            <div class="row">
+              <button class="btn primary" id="saveKey">Сохранить на этом ПК</button>
+              <button class="btn tiny warn" id="forgetKey">Забыть</button>
+            </div>
+            <div class="hint" id="keyHint"></div>
+          </div>
+          <div>
+            <h2>Открытый ключ приложения</h2>
+            <p class="hint">Открытый ключ лежит в самом приложении (<span class="mono">electron/license/keys.cjs</span>) — по нему станция сверяет, что код будет принят. Отзывы (серийники) тоже здесь.</p>
+            <label class="field"><span>JSON: {"keys":[{"keyId":1,"publicKey":"…"}],"revokedSerials":["…"]}</span>
+              <textarea id="publicKeys" rows="7" class="mono"></textarea></label>
+            <div class="row"><button class="btn tiny" id="savePub">Сохранить</button> <span class="hint" id="pubHint"></span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script>
+            <!-- @BUNDLE@ -->
+
+
+      /* ── интерфейс ─────────────────────────────────────────────────────── */
+      (() => {
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+        const STORE = {
+          private: "agro.station.private",
+          public: "agro.station.public",
+          ledger: "agro.station.ledger",
+          exeUrl: "agro.station.exeUrl",
+        };
+        // Открытые ключи приложения вшивает сборщик — это копия
+        // electron/license/keys.cjs, тот же список, которым EXE проверяет подпись.
+        // Отдельной копии здесь нет, чтобы она не могла устареть: после смены
+        // ключа в проекте достаточно npm run station:standalone.
+        const DEFAULT_PUBLIC = AGRO_APP_KEYS;
+        const DEFAULT_EXE_URL = "https://github.com/Igorr112323/Weather_Cover/releases/download/v0.3.4/AgroPrognoz-0.3.4-portable.exe";
+        const RESET_COMMAND = 'move "%APPDATA%\\AgroPrognoz\\agroprognoz.license" "%APPDATA%\\AgroPrognoz\\agroprognoz.license.bak"';
+
+        const read = (key, fallback = "") => {
+          try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+        };
+        const write = (key, value) => {
+          try { localStorage.setItem(key, value); return true; } catch { return false; }
+        };
+        const forget = (key) => { try { localStorage.removeItem(key); } catch { /* без localStorage */ } };
+
+        function toast(text) {
+          const node = $("toast");
+          node.textContent = text;
+          node.hidden = false;
+          clearTimeout(toast.timer);
+          toast.timer = setTimeout(() => { node.hidden = true; }, 4000);
+        }
+
+        async function copy(text, label = "Скопировано") {
+          try {
+            await navigator.clipboard.writeText(text);
+            toast(label);
+          } catch {
+            const area = document.createElement("textarea");
+            area.value = text;
+            document.body.append(area);
+            area.select();
+            document.execCommand("copy");
+            area.remove();
+            toast(label);
+          }
+        }
+
+        function download(name, content) {
+          const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = name;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
+        function box(node, html, error = false) {
+          node.className = `box ${error ? "is-error" : ""}`;
+          node.innerHTML = html;
+        }
+
+        const codeBlock = (code) => `<div class="code" data-copy="${esc(code)}"><code>${esc(code)}</code><button class="btn tiny" data-copy-btn>Копировать</button></div>`;
+        const kv = (rows) => `<dl class="kv">${rows.filter(([, value]) => value !== "" && value != null).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+
+        /** любой клик по «Копировать» / «Скачать» внутри блоков */
+        document.addEventListener("click", (event) => {
+          const copyTarget = event.target.closest("[data-copy-btn]");
+          if (copyTarget) copy(copyTarget.closest("[data-copy]").dataset.copy);
+          const fileButton = event.target.closest("[data-file]");
+          if (fileButton) {
+            download(fileButton.dataset.file, fileButton.dataset.text ?? "");
+            toast("Файл сохранён");
+          }
+          const copyField = event.target.closest("[data-copy-field]");
+          if (copyField) copy($(copyField.dataset.copyField)?.value ?? "");
+          const revoke = event.target.closest("[data-revoke]");
+          if (revoke) revokeSerial(revoke.dataset.revoke);
+        });
+
+        /* ── состояние ───────────────────────────────────────────────────── */
+        function publicConfig() {
+          const raw = read(STORE.public, "");
+          if (!raw) return DEFAULT_PUBLIC;
+          try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed?.keys)) return DEFAULT_PUBLIC;
+            return { keys: parsed.keys, revokedSerials: parsed.revokedSerials ?? [] };
+          } catch { return DEFAULT_PUBLIC; }
+        }
+
+        function privateKey() {
+          const raw = read(STORE.private, "").trim();
+          if (!raw) return null;
+          try {
+            const parsed = JSON.parse(raw);
+            const list = Array.isArray(parsed?.keys) ? parsed.keys : Array.isArray(parsed) ? parsed : [parsed];
+            const found = list.filter((entry) => entry && typeof entry.privateKey === "string");
+            if (found.length) return { keyId: Number(found[found.length - 1].keyId) || 1, privateKeyBase64: found[found.length - 1].privateKey, publicKey: found[found.length - 1].publicKey ?? "" };
+          } catch { /* не JSON — значит вставили голую base64-строку */ }
+          if (/^[A-Za-z0-9+/=]{60,}$/.test(raw)) return { keyId: 1, privateKeyBase64: raw.replace(/\s/g, ""), publicKey: "" };
+          return null;
+        }
+
+        async function renderChips() {
+          const keys = publicConfig();
+          const secret = privateKey();
+          let keyMatches = false;
+          let keyNote = "нет";
+          if (secret) {
+            const proof = await AGRO.matchKey({ privateKeyBase64: secret.privateKeyBase64, keys: keys.keys });
+            keyMatches = proof.ok;
+            keyNote = proof.ok ? `подходит к key-id=${proof.keyId}` : proof.message;
+          }
+          $("chips").innerHTML = [
+            [true, "подпись кода", (await AGRO.signingMode()) === "webcrypto" ? "браузер (WebCrypto Ed25519)" : "встроенный в страницу Ed25519"],
+            [Boolean(secret), "закрытый ключ", `${keyNote}`],
+            [keys.keys.length > 0, "открытый ключ", `${keys.keys.map((entry) => `key-id=${entry.keyId}`).join(", ")} · отзывов ${keys.revokedSerials.length}`],
+            [true, "журнал", `${ledgerRows().length} записей`],
+          ]
+            .map(([ok, label, value]) => `<span class="chip ${ok ? "ok" : "bad"}"><i></i>${esc(label)}: <b>${esc(value)}</b></span>`)
+            .join("");
+          $("keyHint").textContent = secret ? `Ключ загружен: ${keyNote}.` : "Ключ не загружен — выдача кодов недоступна, проверка кодов работает.";
+        }
+
+        /* ── журнал ─────────────────────────────────────────────────────── */
+        function ledgerRows() {
+          const rows = AGRO.ledgerParse(read(STORE.ledger, ""));
+          const revoked = new Set(publicConfig().revokedSerials.map((value) => String(value).toLowerCase()));
+          return rows.map((row) => (revoked.has(row.serial) ? { ...row, status: "revoked" } : row));
+        }
+
+        function saveLedger(rows) {
+          write(STORE.ledger, AGRO.ledgerSerialize(rows));
+        }
+
+        function renderLedger() {
+          const query = $("ledgerSearch").value.trim().toLowerCase();
+          const rows = ledgerRows().filter((row) => !query || JSON.stringify(row).toLowerCase().includes(query));
+          $("ledger").innerHTML = rows.length
+            ? `<table><thead><tr><th>когда</th><th>кому</th><th>компьютер</th><th>тип</th><th>серийник</th><th>статус</th><th>код</th><th></th></tr></thead><tbody>${rows
+                .map(
+                  (row) => `<tr>
+                    <td class="mono">${esc(row.issuedAt)}</td>
+                    <td>${esc(row.name || "—")}${row.phone ? `<div class="hint">${esc(row.phone)}</div>` : ""}${row.email ? `<div class="hint">${esc(row.email)}</div>` : ""}</td>
+                    <td class="mono">${esc(row.shortId ? AGRO.prettyShortId(row.shortId) : "—")}</td>
+                    <td>${row.kind === "universal" ? "универсальный" : "персональный"}</td>
+                    <td class="mono">${esc(AGRO.prettySerial(row.serial))}</td>
+                    <td>${row.status === "revoked" ? `<span class="bad-text">отозван ${esc(row.revokedAt)}</span>` : "действует"}</td>
+                    <td><button class="btn tiny" data-copy="${esc(row.code)}" data-copy-btn>код</button></td>
+                    <td>${row.status === "revoked" ? "" : `<button class="btn tiny warn" data-revoke="${esc(row.serial)}">Отозвать</button>`}</td>
+                  </tr>`,
+                )
+                .reverse()
+                .join("")}</tbody></table>`
+            : `<p class="hint">Записей нет. Выдайте первый код — он появится здесь (в браузере этого компьютера).</p>`;
+          renderChips();
+        }
+
+        function revokeSerial(serial) {
+          if (!confirm(`Отозвать серийник ${AGRO.prettySerial(serial)}?\n\nОн попадёт в список отзыва на этом компьютере и в CSV журнала. Чтобы код перестал работать у покупателя, список должен попасть в electron/license/keys.cjs и в следующую сборку EXE (в проекте: npm run license:revoke -- ${serial}).`)) return;
+          const config = publicConfig();
+          const list = new Set(config.revokedSerials);
+          list.add(String(serial).toLowerCase());
+          write(STORE.public, JSON.stringify({ ...config, revokedSerials: [...list].sort() }, null, 2));
+          $("publicKeys").value = JSON.stringify(publicConfig(), null, 2);
+          toast("Серийник добавлен в список отзыва");
+          renderLedger();
+        }
+
+        /* ── выдача ─────────────────────────────────────────────────────── */
+        let parsed = null;
+
+        $("parse").addEventListener("click", async () => {
+          const text = $("requestText").value;
+          if (!text.trim() && !$("machineCode").value.trim()) {
+            $("parseResult").textContent = "Сначала вставьте, что прислал пользователь, или код компьютера.";
+            return;
+          }
+          parsed = $("machineCode").value.trim()
+            ? await AGRO.resolveBindTarget($("machineCode").value)
+            : await AGRO.parseRequest(text);
+          if (!parsed.ok) {
+            $("parseResult").innerHTML = `<span class="bad-text">${esc(parsed.message)}</span>`;
+            return;
+          }
+          const pretty = parsed.pretty ?? AGRO.prettyShortId(parsed.shortId);
+          parsed.pretty = pretty;
+          $("machineCode").value = pretty;
+          if (parsed.name && !$("name").value) $("name").value = parsed.name;
+          if (parsed.phone && !$("phone").value) $("phone").value = parsed.phone;
+          if (parsed.email && !$("email").value) $("email").value = parsed.email;
+          $("parseResult").innerHTML =
+            `Код компьютера: <b class="mono">${esc(pretty)}</b>${parsed.version ? ` · приложение ${esc(parsed.version)}` : ""}${parsed.phone ? ` · ${esc(parsed.phone)}` : ""}${parsed.email ? ` · ${esc(parsed.email)}` : ""}` +
+            (parsed.conflicts?.length ? `<div class="warn-box">${parsed.conflicts.map((line) => esc(line)).join("<br>")}</div>` : "");
+        });
+
+        $("issue").addEventListener("click", async () => {
+          $("issueHint").textContent = "Подписываем…";
+          const secret = privateKey();
+          if (!secret) {
+            box($("result"), `<h3>Нужен закрытый ключ</h3><p>Откройте вкладку «Ключи» и вставьте содержимое <span class="mono">secrets/license-key.json</span>. Без него код выписать нельзя — это защита от подделки: в приложении лежит только открытый ключ.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          if (typeof BigInt !== "function") {
+            box($("result"), `<h3>Браузер слишком старый</h3><p>Подписи кода нужен BigInt — он есть в Chrome 67+, Firefox 68+, Safari 14+ (2019−2020 год). Или выдавайте код из проекта: <span class="mono">npm run station</span> — там подпись считает Node.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const machineInput = $("machineCode").value.trim();
+          const source = machineInput || $("requestText").value;
+          const target = machineInput ? await AGRO.resolveBindTarget(machineInput) : await AGRO.parseRequest(source);
+          if (!target.ok) {
+            box($("result"), `<h3>Не нашёл код компьютера</h3><p class="bad-text">${esc(target.message)}</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const shortId = target.shortId ?? target;
+          const universal = $("universal").checked;
+          const config = publicConfig();
+          if (!config.keys.some((entry) => Number(entry.keyId) === Number(secret.keyId))) {
+            box($("result"), `<h3>Ключ не добавлен в приложение</h3><p>Закрытый ключ с key-id=${esc(secret.keyId)} не имеет открытого ключа в списке. Приложение такой код не примет: обновите список на вкладке «Ключи» или выполните в проекте <span class="mono">npm run license:keys</span>.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const issued = await AGRO.issueCode({
+            privateKeyBase64: secret.privateKeyBase64,
+            publicKeyBase64: secret.publicKey,
+            keys: config.keys,
+            keyId: secret.keyId,
+            bound: !universal,
+            shortId: universal ? "" : shortId,
+          });
+          // обязательно сверяем результат: код должен пройти проверку тем же списком ключей
+          const check = await AGRO.verifyCode({ code: issued.code, keys: config.keys, machineShortId: universal ? "" : shortId, revokedSerials: config.revokedSerials });
+          if (!check.ok) {
+            box($("result"), `<h3>Выданный код не прошёл проверку</h3><p class="bad-text">${esc(check.message ?? check.reason)}</p><p class="hint">Значит браузерная копия формата кода разошлась с приложением — используйте станцию из проекта: <span class="mono">npm run station</span>.</p>`, true);
+            $("issueHint").textContent = "";
+            return;
+          }
+          const pretty = AGRO.prettyShortId(shortId);
+          const row = {
+            issuedAt: AGRO.stamp(),
+            serial: issued.serialHex,
+            keyId: secret.keyId,
+            kind: universal ? "universal" : "personal",
+            shortId: universal ? "" : shortId,
+            code: issued.code,
+            name: $("name").value.trim(),
+            phone: $("phone").value.trim(),
+            email: $("email").value.trim(),
+            note: $("note").value.trim(),
+            status: "active",
+            revokedAt: "",
+            replaces: "",
+          };
+          saveLedger([...AGRO.ledgerParse(read(STORE.ledger, "")), row]);
+          const message = AGRO.buyerMessage({ name: row.name, code: issued.code, pretty, serial: AGRO.prettySerial(issued.serialHex), universal });
+          const agrolic = AGRO.agrolicContent({ name: row.name, pretty, serial: AGRO.prettySerial(issued.serialHex), code: issued.code, universal });
+          box(
+            $("result"),
+            `<h3>${universal ? "Универсальный" : "Персональный"} код · бессрочно</h3>
+             ${codeBlock(issued.code)}
+             ${kv([
+               ["Компьютер", universal ? "любой" : `<b class="mono">${esc(pretty)}</b> — на другом этот код не сработает`],
+               ["Серийник", `<span class="mono">${esc(AGRO.prettySerial(issued.serialHex))}</span> · key-id=${esc(secret.keyId)}`],
+               ["Проверка", "подпись сверена открытым ключом приложения ✓"],
+             ])}
+             <div class="row">
+               <button class="btn tiny" data-copy="${esc(message)}" data-copy-btn>Скопировать сообщение</button>
+               <button class="btn tiny" data-file="${esc(AGRO.agrolicName(issued.serialHex))}" data-text="${esc(agrolic)}">Скачать .agrolic</button>
+               <button class="btn tiny" data-copy="${esc(issued.code)}" data-copy-btn>Только код</button>
+             </div>
+             <details open><summary>Сообщение покупателю</summary><pre>${esc(message)}</pre></details>
+             <p class="hint">Журнал: запись сохранена в этом браузере. В общий <span class="mono">secrets/ledger.csv</span> она попадёт из станции проекта (<span class="mono">npm run station</span>).</p>`,
+          );
+          $("issueHint").textContent = `Код выписан для компьютера ${pretty}.`;
+          renderLedger();
+          const link = $("exeLink");
+          if (link) link.click?.();
+        });
+
+        $("reset-form").addEventListener("click", () => {
+          for (const id of ["requestText", "machineCode", "name", "phone", "email", "note", "issueHint", "parseResult"]) $(id).value = "";
+          $("universal").checked = false;
+          $("parseResult").textContent = "";
+          $("issueHint").textContent = "";
+          box($("result"), "Здесь появится код, сообщение покупателю и файл .agrolic.");
+        });
+
+        /* ── проверка кода ──────────────────────────────────────────────── */
+        $("verify").addEventListener("click", async () => {
+          const config = publicConfig();
+          const result = await AGRO.verifyCode({
+            code: $("codeText").value,
+            keys: config.keys,
+            machineShortId: $("verifyMachine").value.trim(),
+            revokedSerials: config.revokedSerials,
+          });
+          if (!result.ok) {
+            box($("verifyResult"), `<h3>Код не принят</h3><p class="bad-text">${esc(result.message ?? result.reason)}</p><p class="hint mono">${esc(result.reason)}</p>`, true);
+            return;
+          }
+          box(
+            $("verifyResult"),
+            `<h3>Код действителен</h3>${codeBlock(result.code)}${kv([
+              ["Продукт", esc(result.license.productName)],
+              ["Серийник", `<span class="mono">${esc(result.license.serial)}</span>`],
+              ["Ключ", `key-id=${esc(result.license.keyId)}`],
+              ["Срок", "бессрочно — дата в коде не кодируется"],
+              ["Привязка", result.license.bound ? "персональный (к компьютеру)" : "универсальный"],
+              ["Отзыв", config.revokedSerials.includes(result.license.serialHex) ? "в списке отзыва" : "не отозван"],
+            ])}`,
+          );
+        });
+
+        /* ── EXE и сброс ─────────────────────────────────────────────────── */
+        function refreshExe() {
+          const url = read(STORE.exeUrl, DEFAULT_EXE_URL);
+          $("exeUrl").value = url;
+          $("exeLink").href = url;
+          $("checkNote").textContent = "В собранных пока релизах этого режима нет: он появится в EXE, который будет собран из ветки с electron/license/checkmode.cjs. До тех пор действуй сбросом файла лицензии (шаг 2).";
+        }
+
+        $("exeUrl").addEventListener("change", () => {
+          write(STORE.exeUrl, $("exeUrl").value.trim());
+          refreshExe();
+        });
+        $("makeCheckName").addEventListener("click", () => copy(`AgroPrognoz-check-${Date.now().toString(36)}.exe`, "Имя проверочного файла скопировано"));
+        $("copyReset").addEventListener("click", () => copy(RESET_COMMAND, "Команда скопирована"));
+
+        /* ── ключи ───────────────────────────────────────────────────────── */
+        $("saveKey").addEventListener("click", async () => {
+          const raw = $("privateKey").value.trim();
+          if (!raw) { toast("Вставьте сначала ключ", ""); return; }
+          let stored = raw;
+          if (raw.startsWith("{") || raw.startsWith("[")) {
+            try { JSON.parse(raw); } catch { toast("Похоже на JSON, но не разбирается"); return; }
+          }
+          write(STORE.private, stored);
+          $("privateKey").value = "";
+          toast("Ключ сохранён в этом браузере");
+          await renderChips();
+        });
+        $("forgetKey").addEventListener("click", () => {
+          forget(STORE.private);
+          toast("Ключ удалён из браузера");
+          renderChips();
+        });
+        $("savePub").addEventListener("click", () => {
+          try {
+            const parsedConfig = JSON.parse($("publicKeys").value);
+            if (!Array.isArray(parsedConfig.keys)) throw new Error("нет массива keys");
+            write(STORE.public, JSON.stringify(parsedConfig, null, 2));
+            $("pubHint").textContent = "Сохранено.";
+            renderChips();
+          } catch (error) {
+            $("pubHint").textContent = `Не JSON: ${error.message}`;
+          }
+        });
+
+        /* ── журнал: кнопки ─────────────────────────────────────────────── */
+        $("ledgerSearch").addEventListener("input", renderLedger);
+        $("ledgerRefresh").addEventListener("click", renderLedger);
+        $("ledgerCsv").addEventListener("click", () => download("agro-activation-ledger.csv", `\uFEFF${AGRO.ledgerSerialize(ledgerRows())}`));
+        $("ledgerClear").addEventListener("click", () => {
+          if (!confirm("Очистить журнал в этом браузере? secrets/ledger.csv проекта затронут не будет.")) return;
+          forget(STORE.ledger);
+          renderLedger();
+        });
+
+        $("tabs").addEventListener("click", (event) => {
+          const button = event.target.closest(".tab");
+          if (!button) return;
+          for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("is-active", tab === button);
+          for (const panel of document.querySelectorAll("main > section")) panel.classList.toggle("is-active", panel.id === `tab-${button.dataset.tab}`);
+          if (button.dataset.tab === "ledger") renderLedger();
+        });
+
+        $("publicKeys").value = JSON.stringify(publicConfig(), null, 2);
+        refreshExe();
+        renderChips();
+        renderLedger();
+      })();
+    </script>
+  </body>
+</html>

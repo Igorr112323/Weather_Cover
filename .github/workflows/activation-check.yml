@@ -1,0 +1,143 @@
+# Проверочная сборка EXE — «AgroPrognoz-check-<id>.exe».
+#
+# Зачем: на компьютере, где приложение уже активировано, любая новая копия
+# стартует активированной — файл лицензии в профиле один на все копии. Проверить
+# экран ввода кода можно копией с другим именем: у неё свой файл лицензии
+# (electron/license/checkmode.cjs). Этот workflow собирает такую копию и
+# публикует её в отдельный Release, а станция «Активация ключей» даёт на неё
+# ссылку рядом с выданным кодом.
+#
+# Запуск: Actions → «activation-check» → Run workflow, поле `instance` можно
+# оставить пустым (возьмётся номер запуска).
+#
+# Публикуется только в Release с тегом check-<instance>: обычные релизы и теги
+# vX.Y.Z этот workflow не трогает. Закрытый ключ лицензий в CI не участвует —
+# код выписывает станция на компьютере владельца.
+
+name: activation-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance:
+        description: "Идентификатор проверочной копии (пусто — номер запуска)"
+        required: false
+        default: ""
+      ref:
+        description: "Ветка или тег, из которого собирать"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    name: Проверочный EXE
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci --no-audit --no-fund
+
+      - name: Иконки и геоданные
+        run: |
+          npm run icon
+          npm run prepare:assets
+
+      - name: Тесты лицензирования
+        run: |
+          node --test tests/license.test.mjs tests/activation-doctor.test.mjs tests/license-studio.test.mjs
+          node scripts/activation-doctor.mjs selftest
+
+      # Станция выдачи кодов и её офлайн-копия: код формата обязан совпадать с
+      # приложением, а собранный HTML — с тем, что лежит в репозитории.
+      - name: Станция «Активация ключей» и офлайн-страница
+        run: |
+          node station/scripts/sync-vendor.mjs --check --repo .
+          node station/scripts/build-standalone.mjs --check
+          node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs
+
+      - name: Сборка renderer
+        run: npm run build
+
+      # Выдуманный ключ нужен только чтобы harden самопроверил полный цикл
+      # активации на обфусцированном коде (см. windows-build.yml).
+      - name: Выдуманный ключ для самопроверки
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+            const lines = [
+              "AGRO_LICENSE_SECKEY=" + privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+              "AGRO_LICENSE_PUBKEY=" + publicKey.export({ format: "der", type: "spki" }).toString("base64"),
+              "AGRO_LICENSE_KEY_ID=1",
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, lines.join("\n") + "\n");
+          '
+
+      - name: Защищённая сборка и EXE
+        timeout-minutes: 40
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          mkdir -p ci-logs
+          npm run dist:win 2>&1 | tee ci-logs/dist-win.log
+
+      - name: Проверить упаковку
+        run: npm run verify:package
+
+      - name: Переименовать в проверочную копию
+        id: rename
+        env:
+          # Вход передаётся через окружение, а не подстановкой в строку скрипта:
+          # иначе в значении `instance` можно было бы протащить команду в shell.
+          INPUT_INSTANCE: ${{ github.event.inputs.instance }}
+        run: |
+          set -euo pipefail
+          # Разрешаем только безопасные символы: они же попадают в имя файла и в тег.
+          INSTANCE="$(printf '%s' "${INPUT_INSTANCE:-}" | tr -c 'A-Za-z0-9_-' '-' | sed 's/^-*//; s/-*$//')"
+          if [ -z "$INSTANCE" ]; then INSTANCE="run${GITHUB_RUN_NUMBER}"; fi
+          VERSION="$(node -p "require('./package.json').version")"
+          TARGET="AgroPrognoz-check-${INSTANCE}.exe"
+          SOURCE="$(ls release/AgroPrognoz-*-portable.exe | head -1)"
+          cp "$SOURCE" "release/$TARGET"
+          echo "instance=$INSTANCE" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "tag=check-$INSTANCE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -la release/
+
+      - name: Выложить в Release проверочной сборки
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.rename.outputs.tag }}"
+          NAME="${{ steps.rename.outputs.target }}"
+          gh release create "$TAG" "release/$NAME" \
+            --title "Проверочная сборка $NAME (${{ steps.rename.outputs.version }})" \
+            --notes "Копия обычного portable EXE с другим именем: у неё отдельный файл лицензии (agroprognoz-check-${{ steps.rename.outputs.instance }}.license), поэтому при первом запуске она запрашивает код активации. Проверка подписи, привязка к компьютеру и защита целостности — те же. Лицензия бессрочная." \
+            || gh release upload "$TAG" "release/$NAME" --clobber
+          echo "Ссылка: https://github.com/${{ github.repository }}/releases/download/$TAG/$NAME"
+
+      - name: Артефакт на 30 дней
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgroPrognoz-check
+          path: release/AgroPrognoz-check-*.exe
+          if-no-files-found: error
+          retention-days: 30

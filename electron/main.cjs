@@ -59,13 +59,41 @@ const { createFileStore } = require("./persistence.cjs");
 const { CSP_PRODUCTION, EXTERNAL_LINK_HOSTS } = require("./csp.cjs");
 const { createGuard } = require("./license/guard.cjs");
 const licenseRequest = require("./license/request.cjs");
+const { describeCheckInstance, licenseDirFor, licenseFileNameFor, resolveCheckInstance } = require("./license/checkmode.cjs");
 const { decideLaunch, hardenWebContentsAgainstDebugging } = require("./license/shield.cjs");
 
 const PROTOCOL_NAME = "app";
 const PROTOCOL_HOST = "agroprognoz.local";
 const DB_FILE_NAME = "agroprognoz.sqlite";
+/**
+ * Проверочный режим: у копии `AgroPrognoz-check-<id>.exe` (или запуска с
+ * `--check-instance=<id>`) свой файл лицензии, поэтому она всегда спрашивает код
+ * активации — даже на компьютере, где основная копия уже активирована.
+ * Ничего кроме имени файла лицензии этот режим не меняет.
+ */
+const CHECK_MODE = resolveCheckInstance({ argv: process.argv, env: process.env, execPath: process.execPath });
 /** Файл активированной лицензии в каталоге профиля (шифруется, см. license/store.cjs). */
-const LICENSE_FILE_NAME = "agroprognoz.license";
+const LICENSE_FILE_NAME = licenseFileNameFor(CHECK_MODE.instance);
+/**
+ * Portable-сборка держит лицензию рядом с EXE — каждая скачанная копия спрашивает
+ * код сама, общего состояния на весь компьютер нет. Вычисляется лениво: путь
+ * пользователяElectron знает не в любой момент запуска.
+ */
+function resolveLicenseDir() {
+  return licenseDirFor({
+    env: process.env,
+    userDataDir: app.getPath("userData"),
+    existsSync: (dir) => fs.existsSync(dir),
+    canWrite: (dir) => {
+      try {
+        fs.accessSync(dir, fs.constants.W_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+}
 /** Файл лицензии читаем через системный диалог: большой файл — не лицензия. */
 const LICENSE_FILE_MAX_BYTES = 64 * 1024;
 /** Предел текста кода, пришедшего из поля ввода. */
@@ -839,12 +867,17 @@ if (!gotLock) {
     // лицензии вместе с первым же ответом IPC.
     createSplashWindow();
 
+    const LICENSE_DIR_NOW = resolveLicenseDir();
     licenseGuard = createGuard({
       appRoot: ROOT,
-      userDataDir: app.getPath("userData"),
+      userDataDir: LICENSE_DIR_NOW.dir,
+      licenseFileName: LICENSE_FILE_NAME,
       safeStorage,
       log,
     });
+    const checkNote = describeCheckInstance(CHECK_MODE);
+    if (checkNote) log(`license: ${checkNote}`);
+    log(`license: файл ${LICENSE_FILE_NAME} в ${LICENSE_DIR_NOW.dir}${LICENSE_DIR_NOW.portable ? " (рядом с EXE)" : ""}`);
     try {
       const license = await licenseGuard.initialize();
       log(

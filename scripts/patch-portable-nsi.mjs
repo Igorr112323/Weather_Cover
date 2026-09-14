@@ -13,7 +13,12 @@
  *      AGRO_SPLASH_HANDOFF_FILE, а electron/main.cjs создаёт этот файл, как
  *      только показано окно загрузки или главное окно (страховка — 15 с);
  *   3. приложение запускается без ожидания в скрипте (ExecShellWaitEx), а
- *      NSIS дожидается его завершения уже после того, как убрал заставку.
+ *      NSIS дожидается его завершения уже после того, как убрал заставку;
+ *   4. в приложение передаётся AGRO_PORTABLE_EXE — путь и ИМЯ того файла,
+ *      который реально запустил человек. Нужно для проверочных копий: файл
+ *      `AgroPrognoz-check-<id>.exe` распакуется во временный каталог с обычным
+ *      именем, и без этой переменной приложение не отличило бы проверочную
+ *      копию от основной (electron/license/checkmode.cjs).
  *
  * Изменения делаются идемпотентно в node_modules (после `npm ci` шаблон снова
  * исходный, поэтому скрипт запускается перед каждой сборкой EXE). Если шаблон
@@ -98,14 +103,39 @@ const PATCHED_LAUNCH = `  !ifdef SPLASH_IMAGE
 
 const templatePath = path.join(path.dirname(require.resolve("app-builder-lib/package.json")), "templates", "nsis", "portable.nsi");
 
+/**
+ * Строка, которая передаёт приложению ИМЯ скачанного файла. Portable-сборка
+ * распаковывается во временный каталог, где EXE всегда называется
+ * `AgroPrognoz.exe`, — без этой переменной приложение не узнало бы, что его
+ * скачали как `AgroPrognoz-check-<id>.exe` и что это проверочная копия со своей
+ * лицензией (electron/license/checkmode.cjs).
+ */
+const EXE_PATH_MARKER = "; agroprognoz: portable exe path";
+const EXE_PATH_LINES =
+  `    ${EXE_PATH_MARKER}\n` +
+  `    System::Call 'Kernel32::SetEnvironmentVariable(t, t)i ("AGRO_PORTABLE_EXE", "$EXEPATH").r0'\n`;
+
+/** Добавляет передачу AGRO_PORTABLE_EXE после нашей заставки-маркера (идемпотентно). */
+function withExePath(text) {
+  if (text.includes(EXE_PATH_MARKER)) return text;
+  const index = text.indexOf(MARKER);
+  if (index === -1) return text;
+  const lineEnd = text.indexOf("\n", index);
+  if (lineEnd === -1) return text;
+  return text.slice(0, lineEnd + 1) + EXE_PATH_LINES + text.slice(lineEnd + 1);
+}
+
 const source = await readFile(templatePath, "utf8");
-if (source.includes(MARKER)) {
-  console.log(`• portable.nsi уже исправлен: ${templatePath}`);
-} else if (!source.includes(ORIGINAL_GUI_INIT) || !source.includes(ORIGINAL_LAUNCH)) {
+if (!source.includes(MARKER) && (!source.includes(ORIGINAL_GUI_INIT) || !source.includes(ORIGINAL_LAUNCH))) {
   console.error(`✗ Неожиданное содержимое ${templatePath}: ожидаемые блоки не найдены. Проверьте версию electron-builder.`);
   process.exit(1);
+}
+// Источник правится целиком и сразу, поэтому сборка не может получить
+// «заставку без ожидания» или «ожидание без передачи имени файла».
+const patched = withExePath(source.includes(MARKER) ? source : source.replace(ORIGINAL_GUI_INIT, PATCHED_GUI_INIT).replace(ORIGINAL_LAUNCH, PATCHED_LAUNCH));
+if (patched === source) {
+  console.log(`• portable.nsi уже исправлен: ${templatePath}`);
 } else {
-  const patched = source.replace(ORIGINAL_GUI_INIT, PATCHED_GUI_INIT).replace(ORIGINAL_LAUNCH, PATCHED_LAUNCH);
   await writeFile(templatePath, patched, "utf8");
-  console.log(`✓ portable.nsi: заставка держится до первого окна приложения (${templatePath})`);
+  console.log(`✓ portable.nsi: заставка держится до первого окна, имя скачанного EXE передаётся в AGRO_PORTABLE_EXE (${templatePath})`);
 }
