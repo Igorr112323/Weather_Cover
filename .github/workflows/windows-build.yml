@@ -82,10 +82,10 @@ jobs:
       - name: "Страницы: актуальность сборки (standalone + personal)"
         run: node station/scripts/build-standalone.mjs --check
 
-      - name: "Страницы: тесты выдачи и проверки кода"
+      - name: "Страницы: тесты выдачи и проверки кода (включая встроенный Ed25519)"
         run: |
           set -o pipefail
-          if ! node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs 2>&1 | tee ci-logs/station.log; then
+          if ! node --test station/tests/station.test.mjs station/tests/standalone.test.mjs station/tests/personal.test.mjs station/tests/ed25519.test.mjs 2>&1 | tee ci-logs/station.log; then
             echo "===== ПАДАЮЩИЕ ТЕСТЫ СТРАНИЦ (выжимка) ====="
             grep -E "^ *not ok|error: |AssertionError|mismatch" ci-logs/station.log | tail -40
             exit 1

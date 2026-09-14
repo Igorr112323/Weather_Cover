@@ -279,7 +279,7 @@ describe("сборка страницы с вшитым ключом", () => {
     assert.match(code, /^AGRO-/, `код не выдан: ${dom.get("msg").textContent}`);
     const check = core.verifyCode({ code, keys: [{ keyId: 7, publicKey: SPKI_B64 }], machineShortId: SHORT });
     assert.equal(check.ok, true, `приложение не приняло код: ${JSON.stringify(check)}`);
-    assert.match(dom.get("msg").textContent, /keyId 7|key-id 7|7/i, "не сказано, каким ключом выдан код");
+    assert.match(dom.get("msg").textContent, /ключ key-id=7/, "не сказано, каким ключом выдан код");
     dom.close();
   });
 
