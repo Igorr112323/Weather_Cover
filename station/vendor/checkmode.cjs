@@ -48,6 +48,8 @@ const FLAG_PLAIN = "--check";
 const ENV_NAME = "AGRO_CHECK_INSTANCE";
 /** Переменная, которую portable-сборка NSIS заполняет путём скачанного файла. */
 const ENV_PORTABLE_EXE = "AGRO_PORTABLE_EXE";
+/** Каталог исходного EXE — его задаёт electron-builder для portable-сборки. */
+const ENV_PORTABLE_DIR = "PORTABLE_EXECUTABLE_DIR";
 
 /**
  * Приводит произвольную строку к идентификатору экземпляра или возвращает "".
@@ -125,6 +127,46 @@ function licenseFileNameFor(instance) {
   return clean ? `agroprognoz-check-${clean}.license` : LICENSE_FILE_NAME;
 }
 
+/** Каталог файла по его пути; и «\\», и «/» — чтобы работало на любой ОС. */
+function dirOf(filePath) {
+  const text = String(filePath ?? "").replace(/[\\/]+$/, "");
+  const index = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  if (index <= 0) return "";
+  const head = text.slice(0, index);
+  // «D:» само по себе — не каталог, возвращаем «D:\»
+  return /^[A-Za-z]:$/.test(head) ? `${head}${text[index]}` : head;
+}
+
+/** Каталог рядом со скачанным EXE, если сборка portable; иначе "". */
+function portableDir(env = {}) {
+  const fromDir = String(env[ENV_PORTABLE_DIR] ?? "").trim();
+  if (fromDir) return fromDir;
+  const fromExe = String(env[ENV_PORTABLE_EXE] ?? "").trim();
+  return dirOf(fromExe);
+}
+
+/**
+ * Где искать и куда писать файл лицензии.
+ *
+ * Portable-сборка (скачали один EXE и запустили) держит лицензию РЯДОМ с собой:
+ * тогда каждая новая копия спрашивает код заново, а активация переезжает вместе
+ * с файлом — никакого общего состояния на весь компьютер. В установленной
+ * сборке (Program Files) писать рядом нельзя, поэтому там остаётся каталог
+ * пользователя. Каталог рядом с EXE используется только если он существует и
+ * доступен на запись: проверка приходит параметрами, чтобы функция осталась
+ * чистой (файловой системы модуль не касается).
+ *
+ * @param {{env?:object, userDataDir?:string, existsSync?:(dir:string)=>boolean, canWrite?:(dir:string)=>boolean}} options
+ * @returns {{dir:string, portable:boolean, source:string}}
+ */
+function licenseDirFor({ env = {}, userDataDir = "", existsSync = null, canWrite = null } = {}) {
+  const portable = portableDir(env);
+  if (!portable) return { dir: userDataDir, portable: false, source: "userData" };
+  if (typeof existsSync === "function" && !existsSync(portable)) return { dir: userDataDir, portable: false, source: "userData" };
+  if (typeof canWrite === "function" && !canWrite(portable)) return { dir: userDataDir, portable: false, source: "userData" };
+  return { dir: portable, portable: true, source: ENV_PORTABLE_DIR };
+}
+
 /** Короткая строка в лог main process (без русских букв — лог читается в консоли Windows). */
 function describeCheckInstance({ instance, source }) {
   if (!instance) return "";
@@ -133,6 +175,7 @@ function describeCheckInstance({ instance, source }) {
 
 module.exports = {
   CHECK_EXE_PREFIX,
+  ENV_PORTABLE_DIR,
   DEFAULT_INSTANCE,
   ENV_NAME,
   ENV_PORTABLE_EXE,
@@ -141,7 +184,10 @@ module.exports = {
   LICENSE_FILE_NAME,
   describeCheckInstance,
   instanceFromExePath,
+  dirOf,
+  licenseDirFor,
   licenseFileNameFor,
+  portableDir,
   readFlag,
   resolveCheckInstance,
   sanitizeInstance,

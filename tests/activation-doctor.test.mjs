@@ -100,6 +100,39 @@ describe("проверочный режим копий (checkmode)", () => {
     assert.equal(resolveCheckInstance({ argv: ["--check"], env: {}, execPath: "C:\\a\\AgroPrognoz.exe" }).instance, checkmode.DEFAULT_INSTANCE);
   });
 
+  describe("где лежит файл лицензии", () => {
+    const { licenseDirFor } = checkmode;
+
+    it("portable-сборка держит лицензию рядом с EXE", () => {
+      const dir = licenseDirFor({ env: { PORTABLE_EXECUTABLE_DIR: "D:\\Загрузки\\Agro" }, userDataDir: "C:\\Users\\x\\AgroPrognoz" });
+      assert.deepEqual(dir, { dir: "D:\\Загрузки\\Agro", portable: true, source: "PORTABLE_EXECUTABLE_DIR" });
+      const viaExe = licenseDirFor({ env: { AGRO_PORTABLE_EXE: "D:\\Загрузки\\Agro\\AgroPrognoz.exe" }, userDataDir: "C:\\u" });
+      assert.equal(viaExe.dir, "D:\\Загрузки\\Agro");
+      assert.equal(viaExe.portable, true);
+    });
+
+    it("установленная сборка — как раньше, каталог пользователя", () => {
+      const dir = licenseDirFor({ env: {}, userDataDir: "C:\\Users\\x\\AppData\\Roaming\\AgroPrognoz" });
+      assert.deepEqual(dir, { dir: "C:\\Users\\x\\AppData\\Roaming\\AgroPrognoz", portable: false, source: "userData" });
+    });
+
+    it("рядом с EXE писать некуда — откат на каталог пользователя", () => {
+      const notThere = licenseDirFor({ env: { PORTABLE_EXECUTABLE_DIR: "D:\\нет\\такого" }, userDataDir: "C:\\u", existsSync: () => false });
+      assert.deepEqual(notThere, { dir: "C:\\u", portable: false, source: "userData" });
+      const readOnly = licenseDirFor({ env: { AGRO_PORTABLE_EXE: "C:\\Program Files\\Agro\\AgroPrognoz.exe" }, userDataDir: "C:\\u", existsSync: () => true, canWrite: () => false });
+      assert.equal(readOnly.dir, "C:\\u", "из Program Files лицензия в Program Files не пишется");
+      assert.equal(readOnly.portable, false);
+    });
+
+    it("каталог рядом с EXE видит диагностика и сброс", () => {
+      const candidates = doctor.licenseDirectoryCandidates({ platform: "win32", env: { USERPROFILE: "C:\\u", APPDATA: "C:\\u\\AppData\\Roaming", PORTABLE_EXECUTABLE_DIR: "D:\\Загрузки\\Agro" } });
+      assert.equal(candidates[0], path.normalize("D:\\Загрузки\\Agro"), "портативный каталог должен быть первым");
+      assert.ok(candidates.some((dir) => dir.endsWith(path.join("Roaming", "AgroPrognoz"))), "обычный каталог тоже должен оставаться в списке");
+      const viaExe = doctor.licenseDirectoryCandidates({ platform: "win32", env: { USERPROFILE: "C:\\u", APPDATA: "C:\\u\\AppData\\Roaming", AGRO_PORTABLE_EXE: "E:\\Agro\\AgroPrognoz.exe" } });
+      assert.equal(viaExe[0], path.normalize("E:\\Agro"));
+    });
+  });
+
   it("не съедает следующий переключатель вместо значения", () => {
     assert.equal(resolveCheckInstance({ argv: ["--check", "--other"], env: {}, execPath: "C:\\a\\AgroPrognoz.exe" }).instance, checkmode.DEFAULT_INSTANCE);
   });

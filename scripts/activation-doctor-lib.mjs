@@ -60,8 +60,17 @@ export function licenseDirectoryCandidates(options = {}) {
     if (env.XDG_CONFIG_HOME) roots.push(env.XDG_CONFIG_HOME);
     else if (home) roots.push(path.join(home, ".config"));
   }
+  // Portable-сборка пишет лицензию рядом со своим EXE (PORTABLE_EXECUTABLE_DIR
+  // задаёт electron-builder, AGRO_PORTABLE_EXE — наш NSIS-скрипт): этот каталог
+  // смотрим как есть, без подкаталога профиля.
+  const portable = portableLicenseDir(env);
+
   const seen = new Set();
   const candidates = [];
+  if (portable) {
+    seen.add(portable);
+    candidates.push(portable);
+  }
   for (const root of roots) {
     for (const profile of PROFILE_NAMES) {
       const dir = path.normalize(path.join(root, profile));
@@ -71,6 +80,23 @@ export function licenseDirectoryCandidates(options = {}) {
     }
   }
   return candidates;
+}
+
+/** Каталог рядом с portable-EXE (или ""), чтобы `license:status` видел и его. */
+export function portableLicenseDir(env = process.env) {
+  const fromDir = String(env.PORTABLE_EXECUTABLE_DIR ?? "").trim();
+  if (fromDir) return fromDir;
+  const fromExe = String(env.AGRO_PORTABLE_EXE ?? "").trim();
+  return dirOf(fromExe);
+}
+
+/** Каталог файла по пути; и «\\», и «/» — Windows-путь разбирается и на Linux. */
+function dirOf(filePath) {
+  const text = String(filePath ?? "").replace(/[\\/]+$/, "");
+  const index = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  if (index <= 0) return "";
+  const head = text.slice(0, index);
+  return /^[A-Za-z]:$/.test(head) ? `${head}${text[index]}` : head;
 }
 
 /** Похоже ли имя файла на файл лицензии приложения (включая карантин и бэкапы). */
