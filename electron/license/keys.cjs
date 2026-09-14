@@ -16,6 +16,8 @@ module.exports = {
   keys: [
     { keyId: 1, label: "production", publicKey:
       "MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw=" },
+    { keyId: 2, label: "shop", publicKey:
+      "MCowBQYDK2VwAyEAR6JF2l11lKMnkTSzNNSGGJytbHyGgPwJZyPaxadTFqE=" },
   ],
   revokedSerials: [
     "dd765aac5612aeb9",

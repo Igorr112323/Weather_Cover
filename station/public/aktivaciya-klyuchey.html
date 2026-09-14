@@ -1237,7 +1237,7 @@ release\AgroPrognoz-check-demo.exe     :: спросит код</pre>
       /* Открытые ключи приложения и список отзыва — точная копия vendor/keys.cjs,
          то есть того же файла, которым EXE проверяет подпись. Страница сверяет
          выданный код с этим списком: если вставлен не боевой ключ, код не выдаётся. */
-      const AGRO_APP_KEYS = {"keys":[{"keyId":1,"label":"production","publicKey":"MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw="}],"revokedSerials":["dd765aac5612aeb9"]};
+      const AGRO_APP_KEYS = {"keys":[{"keyId":1,"label":"production","publicKey":"MCowBQYDK2VwAyEASJTsYlvpy8h8Lf4kYgVDHPTqrUyEFLX8j+GQGHiL6Sw="},{"keyId":2,"label":"shop","publicKey":"MCowBQYDK2VwAyEAR6JF2l11lKMnkTSzNNSGGJytbHyGgPwJZyPaxadTFqE="}],"revokedSerials":["dd765aac5612aeb9"]};
 
       /* Обвязка браузера: подпись и проверка кода через WebCrypto Ed25519. */
       /* ── браузерная обвязка ─────────────────────────────────────────────────────
