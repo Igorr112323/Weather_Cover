@@ -7,25 +7,24 @@
  * «обойти» этот экран правкой интерфейса нельзя.
  *
  * Лицензия бессрочная: на экране нет ни срока действия, ни обратного отсчёта,
- * ни дат, ни «условий лицензии» — только поле для кода и кнопка «Активировать».
+ * ни дат, ни «условий лицензии». На экране ровно два действия:
  *
- * Всё остальное свёрнуто в одну строку внизу («Код компьютера и заявка»): код
- * этого компьютера с кнопкой копирования, каналы связи с владельцем, сохранение
- * файла заявки и активация файлом .agrolic. Покупатель, который просто
- * вставляет полученный код, ничего лишнего не видит; тому, кому код ещё нужно
- * получить, не придётся искать, где это делать.
+ *   1. поле для кода и кнопка «Активировать»;
+ *   2. ниже — нередактируемое поле с кодом этого компьютера и кнопка
+ *      «Скопировать»: его покупатель пересылает владельцу, когда код нужен.
  *
- * Заявка владельцу: кнопка формирует текст заявки (код компьютера, полный
- * идентификатор, версия) и открывает мессенджер/почту покупателя с готовым
- * текстом. Контакт владельца в renderer не хранится — его присылает main
- * process. Запасные пути: скопировать заявку и сохранить файл .agrorequest.
+ * Заявки, мессенджеров, телефонов и «активации файлом» здесь нет: канал связи
+ * с владельцем он выбирает сам, а текст заявки только добавлял экрану шума.
+ * Полный идентификатор машины при копировании прикладывается в скобках — его
+ * разбирает «Студия лицензий» (station/), поэтому никаких полей на экране не
+ * нужно. Кнопка копирования и поле доступны всегда, даже при повреждённых
+ * файлах: скопировать код машины безвредно, а «Активировать» — нет.
  */
 
 import { h, icon } from "../../lib/dom.js";
 import { createButton } from "../../components/button.js";
 import { toast } from "../../components/toast.js";
-import { activateLicense, activateLicenseFromFile } from "../../services/license.js";
-import { openRequestChannel, resolveRequestInfo, saveRequestFile } from "../../services/license-request.js";
+import { activateLicense } from "../../services/license.js";
 import { CODE_BODY_LENGTH, codeProgress, formatCodeText, isCodeComplete } from "../../services/license-code.js";
 import iconUrl from "../../assets/brand/app-icon.svg?url";
 
@@ -57,10 +56,9 @@ async function copyText(text) {
 /**
  * @param {object} config
  * @param {object|null} config.status состояние лицензии из main process
- * @param {string} [config.version] версия приложения
  * @param {(status:object)=>void} config.onActivated вызывается после успешной активации
  */
-export function createActivationPage({ status, version = "", onActivated } = {}) {
+export function createActivationPage({ status, onActivated } = {}) {
   let busy = false;
   let finished = false;
 
@@ -153,30 +151,6 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     onClick: () => submit(),
   });
 
-  const fileButton = createButton({
-    label: "Активировать файлом…",
-    tone: "secondary",
-    icon: "file-text",
-    disabled: status?.tampered === true,
-    title: "Файл лицензии (.agrolic, .txt) выбирается в системном диалоге",
-    onClick: async (_event, button) => {
-      if (busy) return;
-      busy = true;
-      button.setLoading(true, "Выбор файла");
-      hideError();
-      const result = await activateLicenseFromFile();
-      button.setLoading(false);
-      busy = false;
-      if (result?.code === "canceled") return;
-      if (result?.ok) {
-        succeed(result.status);
-        return;
-      }
-      showError(result?.message || "Файл не принят: проверьте, что это файл лицензии этого приложения.");
-    },
-  });
-  fileButton.setAttribute("data-activate-file", "");
-
   async function submit() {
     if (busy || finished) return;
     const code = input.value.trim();
@@ -194,7 +168,6 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     busy = true;
     hideError();
     activateButton.setLoading(true, "Проверяем код");
-    fileButton.setDisabled(true);
 
     const result = await activateLicense(code);
 
@@ -206,7 +179,6 @@ export function createActivationPage({ status, version = "", onActivated } = {})
       return;
     }
 
-    fileButton.setDisabled(false);
     showError(result?.message || result?.status?.message || "Код активации не принят.");
     input.focus();
   }
@@ -226,160 +198,54 @@ export function createActivationPage({ status, version = "", onActivated } = {})
   }
 
   const machineShort = status?.machineIdShort || "—";
-  const machineRow = h("div", { class: "activate__machine" }, [
-    h("div", { class: "activate__machine-text" }, [
-      h("span", { class: "block-title", text: "Этот компьютер" }),
-      h("code", { class: "activate__machine-id", text: machineShort }),
-      // Пояснение про приблизительный идентификатор оставляем: оно влияет на
-      // выбор типа кода, но показывается только когда это действительно так.
-      ...(status?.machineQuality === "low"
-        ? [h("span", { class: "muted", text: "Идентификатор приблизительный — персональный код может не подойти, берите общий." })]
-        : []),
-    ]),
-    createButton({
-      label: "Скопировать",
-      tone: "ghost",
-      size: "sm",
-      icon: "clipboard-list",
-      onClick: async () => {
-        const ok = await copyText(status?.machineId ? `${machineShort} (${status.machineId})` : machineShort);
-        if (ok) toast.success("Идентификатор скопирован");
-        else toast.error("Скопировать не удалось — выпишите идентификатор вручную");
-      },
-    }),
-  ]);
+  const machineFull = status?.machineId || "";
 
-  /* ── Заявка владельцу ─────────────────────────────────────────────────── */
-
-  /**
-   * Панель заявки: текст (код компьютера, полный идентификатор, версия),
-   * каналы связи и запасные пути — копирование и файл .agrorequest. Контакты
-   * владельца интерфейс не хранит: они приходят из main process вместе с
-   * готовым текстом. Приложение при этом остаётся офлайн — заявка уходит
-   * только через собственные мессенджер или почту покупателя.
-   */
-  const requestText = h("textarea", {
-    class: "activate__request-text",
-    rows: "7",
+  // Поле только для чтения: править его смысла нет, а выделить и скопировать
+  // руками должно быть можно (кнопка — запасной путь для мыши).
+  const machineInput = h("input", {
+    id: "activation-machine",
+    class: "activate__machine-input",
+    type: "text",
     readonly: "",
     spellcheck: "false",
-    "data-request-text": "",
-    "aria-label": "Текст заявки владельцу",
+    value: machineShort,
+    "data-activate-machine": "",
+    "aria-describedby": "activation-machine-hint",
+    title: status?.machineQuality === "low"
+      ? "Идентификатор приблизительный: системный номер недоступен — попросите у владельца общий код"
+      : "По этому коду владелец выписывает код для этого компьютера",
   });
 
-  const contactHint = h("p", { class: "muted activate__request-hint", "data-request-contact": "" });
+  const machineHint = h("span", {
+    id: "activation-machine-hint",
+    class: "activate__machine-hint",
+    text: status?.machineQuality === "low"
+      ? "Идентификатор приблизительный — попросите общий код"
+      : "Нужен, только если код ещё не выдан",
+  });
 
-  function channelButton(channel, label) {
-    const button = createButton({
-      label,
-      tone: "secondary",
-      onClick: async (_event, self) => {
-        self.setLoading(true);
-        const result = await openRequestChannel(channel);
-        self.setLoading(false);
-        if (result?.ok) {
-          toast.success(result.copied ? "Текст заявки скопирован — вставьте его в открывшемся чате" : "Заявка отправляется");
-          return;
-        }
-        toast.warning(result?.message || "Не удалось открыть канал связи");
-      },
-    });
-    button.setAttribute("data-request-channel", channel);
-    return button;
-  }
-
-  const requestState = { fileName: "", loaded: false };
-
-  const requestPanel = h("div", { class: "activate__request-panel", "data-request-panel": "", hidden: "" }, [
-    h("div", { class: "field" }, [
-      h("div", { class: "control control--multiline" }, [requestText]),
-    ]),
-    contactHint,
-    h("div", { class: "activate__request-actions" }, [
-      channelButton("telegram", "Telegram"),
-      channelButton("whatsapp", "WhatsApp"),
-      channelButton("email", "Почта"),
-      (() => {
-        const button = createButton({
-          label: "Скопировать заявку",
-          tone: "secondary",
-          icon: "clipboard-list",
-          onClick: async () => {
-            const ok = await copyText(requestText.value);
-            if (ok) toast.success("Заявка скопирована");
-            else toast.error("Скопировать не удалось — выделите текст заявки и скопируйте вручную");
-          },
-        });
-        button.setAttribute("data-request-copy", "");
-        return button;
-      })(),
-      (() => {
-        const button = createButton({
-          label: "Сохранить файл .agrorequest",
-          tone: "ghost",
-          icon: "save",
-          title: "Файл заявки можно переслать владельцу любым удобным способом",
-          onClick: async (_event, self) => {
-            self.setLoading(true);
-            const result = await saveRequestFile(requestText.value, requestState.fileName);
-            self.setLoading(false);
-            if (result?.ok) toast.success(`Файл заявки сохранён${result.fileName ? `: ${result.fileName}` : ""}`);
-            else toast.warning(result?.message || "Не удалось сохранить файл заявки");
-          },
-        });
-        button.setAttribute("data-request-save", "");
-        return button;
-      })(),
-    ]),
-  ]);
-
-  async function loadRequestInfo() {
-    const info = await resolveRequestInfo(status, version);
-    requestText.value = info.text ?? "";
-    requestState.fileName = info.fileName ?? "";
-    if (info.contact?.phone) {
-      const pretty = info.contact.phone.replace(/^(\d)(\d{3})(\d{3})(\d{2})(\d{2})$/, "+$1 $2 $3-$4-$5");
-      contactHint.textContent = `Владелец: ${info.contact.telegramUser ? `@${info.contact.telegramUser}` : pretty}${
-        info.contact.email ? ` · ${info.contact.email}` : ""
-      }`;
-    } else if (info.local) {
-      contactHint.textContent = "В браузере заявку можно скопировать или сохранить файлом; мессенджер откроется в приложении.";
-    } else {
-      contactHint.textContent = "";
-    }
-    // Каналы, которые владелец не настроил, не показываются вовсе.
-    if (!info.local && info.channels && typeof info.channels === "object") {
-      for (const button of [...requestPanel.querySelectorAll("[data-request-channel]")]) {
-        const channel = button.getAttribute("data-request-channel");
-        if (info.channels[channel] !== true) button.hidden = true;
-      }
-    }
-    requestState.loaded = true;
-  }
-
-  const requestToggle = createButton({
-    label: "Отправить заявку владельцу",
+  const copyButton = createButton({
+    label: "Скопировать",
     tone: "secondary",
-    icon: "inbox",
-    disabled: status?.tampered === true,
-    onClick: async (_event, self) => {
-      const opening = requestPanel.hidden;
-      requestPanel.hidden = !opening;
-      if (opening && !requestState.loaded) {
-        self.setLoading(true, "Готовим заявку");
-        await loadRequestInfo();
-        self.setLoading(false);
-      }
+    size: "sm",
+    icon: "clipboard-list",
+    onClick: async () => {
+      // Полностью совместимо с полем «Заявка» в «Студии лицензий»: короткий код
+      // и в скобках — полный идентификатор.
+      const ok = await copyText(machineFull ? `${machineShort} (${machineFull})` : machineShort);
+      if (ok) toast.success("Код компьютера скопирован");
+      else toast.error("Не скопировалось — выделите код в поле и нажмите Ctrl+C");
     },
   });
-  requestToggle.setAttribute("data-request-toggle", "");
+  copyButton.setAttribute("data-activate-copy", "");
 
-  const requestSection = h("div", { class: "activate__request" }, [requestToggle, requestPanel]);
-
-  // Всё, что не нужно при обычном вводе кода, живёт под одной строкой.
-  const more = h("details", { class: "activate__more", "data-activate-more": "" }, [
-    h("summary", { class: "activate__more-summary", text: "Код компьютера и заявка" }),
-    h("div", { class: "activate__more-body" }, [machineRow, requestSection, fileButton]),
+  const machineBlock = h("div", { class: "activate__machine" }, [
+    h("div", { class: "field" }, [
+      h("label", { class: "field__label", for: "activation-machine" }, [h("span", { text: "Код этого компьютера" })]),
+      h("div", { class: "control control--multiline" }, [machineInput]),
+      h("div", { class: "activate__hintrow" }, [machineHint]),
+    ]),
+    h("div", { class: "activate__copy" }, [copyButton]),
   ]);
 
   const card = h("div", { class: "activate__card activate__card--minimal" }, [
@@ -400,7 +266,7 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     ]),
     errorNote.node,
     h("div", { class: "activate__actions" }, [activateButton]),
-    more,
+    machineBlock,
   ]);
 
   // Полоса перетаскивания окна: системной строки заголовка нет, поэтому

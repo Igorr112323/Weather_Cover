@@ -104,100 +104,37 @@
   gap: var(--sp-2);
 }
 
-.activate__divider {
-  height: 1px;
-  background: var(--border);
-}
-
+/* Код компьютера: поле, которое нельзя исправить руками, и копирование. */
 .activate__machine {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-3);
-}
-
-.activate__machine-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.activate__machine-id {
-  font-family: var(--font-mono);
-  font-size: 16px;
-  letter-spacing: 0.08em;
-  color: var(--text-primary);
-}
-
-.activate__more {
-  margin-top: 18px;
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
   border-top: 1px solid var(--border);
-  padding-top: 10px;
-}
-.activate__more-summary {
-  cursor: pointer;
-  font-size: 12.5px;
-  color: var(--text-muted);
-  list-style: none;
-  user-select: none;
-}
-.activate__more-summary::before {
-  content: "›";
-  display: inline-block;
-  margin-right: 6px;
-  transition: transform 0.15s ease;
-}
-.activate__more[open] > .activate__more-summary::before { transform: rotate(90deg); }
-.activate__more-summary:hover { color: var(--green); }
-.activate__more-body {
-  display: grid;
-  gap: 14px;
-  padding-top: 12px;
-}
-.activate__card--minimal .activate__actions .btn { min-width: 150px; }
-
-.activate__details {
-  padding-top: var(--sp-1);
-  border-top: 1px dashed var(--border);
-}
-
-/* Заявка владельцу: панель с текстом заявки, каналами связи и запасными путями. */
-.activate__request {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
 }
 
-.activate__request-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  background: var(--app-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-}
-
-.activate__request-text {
+.activate__machine-input {
   width: 100%;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 18px;
-  white-space: pre;
-  resize: vertical;
-  min-height: 120px;
+  font-size: 20px;
+  line-height: 28px;
+  letter-spacing: 0.14em;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--surface-muted);
+  cursor: text;
 }
 
-.activate__request-hint {
+.activate__machine-hint {
   font-size: 12px;
   line-height: 16px;
+  color: var(--text-muted);
 }
 
-.activate__request-actions {
+.activate__copy {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
+  justify-content: center;
 }
 
 .activate__done {
@@ -227,9 +164,5 @@
 
   .activate__actions .btn {
     flex: 1 1 100%;
-  }
-
-  .activate__machine {
-    flex-direction: column;
   }
 }
