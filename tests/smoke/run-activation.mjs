@@ -94,13 +94,15 @@ try {
 
   const structure = await page.evaluate(() => ({
     title: document.querySelector(".activate__card .page-title")?.textContent ?? "",
-    lead: document.querySelector(".activate__lead")?.textContent ?? "",
+    cardText: document.querySelector(".activate__card")?.innerText ?? "",
     hasInput: Boolean(document.querySelector("#activation-code")),
     sidebar: Boolean(document.querySelector(".sidebar")),
     navItems: document.querySelectorAll(".nav-item").length,
     machineId: document.querySelector(".activate__machine-id")?.textContent ?? "",
-    details: document.querySelector(".activate__details")?.innerText ?? "",
     buttons: [...document.querySelectorAll(".activate__actions .btn__label")].map((node) => node.textContent),
+    hiddenBlocks: ["activate__lead", "activate__details"].filter((cls) => Boolean(document.querySelector(`.${cls}`))),
+    moreOpen: document.querySelector("[data-activate-more]")?.open === true,
+    moreLabels: [...document.querySelectorAll("[data-activate-more] .btn__label")].map((node) => node.textContent),
     drag: Boolean(document.querySelector(".activate .window-drag")),
   }));
 
@@ -108,13 +110,16 @@ try {
   check("приложение не построено вместо активации", structure.sidebar === false && structure.navItems === 0);
   check("поле кода на месте", structure.hasInput === true);
   check("полоса перетаскивания окна есть", structure.drag === true);
-  check("идентификатор компьютера показан", structure.machineId === "DEMO-DEMO", structure.machineId);
-  check("три кнопки активации", structure.buttons.length === 3, structure.buttons.join(", "));
-  check("в тексте экрана сказано про бессрочность", /бессрочн/i.test(structure.lead) && /бессрочн/i.test(structure.details));
+  // Экран минимальный: поле и кнопка. Всё остальное — под одной строкой, чтобы
+  // покупатель, который просто вставляет код, не читал пояснений.
+  check("на экране одна кнопка — «Активировать»", structure.buttons.join(",") === "Активировать", structure.buttons.join(", "));
+  check("поясняющих абзацев и блоков «условия/серийник/версия» нет", structure.hiddenBlocks.length === 0, structure.hiddenBlocks.join(", "));
+  check("код компьютера спрятан, но доступен", structure.machineId === "DEMO-DEMO" && structure.moreOpen === false, structure.machineId);
+  check("под катом — заявка и активация файлом", ["Telegram", "WhatsApp", "Почта"].some((label) => structure.moreLabels.join(" ").includes(label)) && structure.moreLabels.join(" ").includes("Отправить заявку владельцу"), structure.moreLabels.join(", "));
   check(
-    "на экране нет ни одной даты и ни одного срока",
-    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(structure.details) && !/дн(ей|я|и)|осталось|истека|продл/i.test(structure.details),
-    structure.details.replace(/\n/g, " | "),
+    "на экране нет ни одной даты, ни срока, ни «бессрочно» лишнего текста",
+    !/\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(structure.cardText) && !/дн(ей|я|и)|осталось|истека|продл|Условия лицензии|Срок действия/i.test(structure.cardText),
+    structure.cardText.replace(/\n/g, " | ").slice(0, 160),
   );
 
   await page.screenshot({ path: path.join(SHOTS_DIR, "activation-empty.png") });
@@ -163,14 +168,21 @@ try {
   check("неполный код отклоняется на месте", /неполн|целиком/i.test(shortError), shortError);
   check("счётчик после обрезки кода", (await page.textContent(".activate__count")) === "4 / 128");
 
-  // Вставка из буфера: в headless-браузере буфер пуст — экран не должен упасть.
-  await page.fill("#activation-code", FULL_CODE);
-  await page.getByRole("button", { name: /буфер/i }).click();
-  await page.waitForTimeout(600);
-  check("кнопка вставки не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
+  // Вставка в поле форматируется сама (кнопки «из буфера» на экране нет):
+  // проверка, что Ctrl+V-сценарий (вставка текста с мусором) не ломает ввод.
+  await page.fill("#activation-code", "");
+  await page.keyboard.type("agro 1234");
+  await page.dispatchEvent("#activation-code", "blur");
+  check("в поле остаётся то, что набрано", (await page.inputValue("#activation-code")).replace(/\s/g, "").length >= 9, await page.inputValue("#activation-code"));
+
+  // Раскрываем кат: там код компьютера, заявка и файл лицензии.
+  await page.click(".activate__more-summary");
+  await page.waitForFunction(() => document.querySelector("[data-activate-more]")?.open === true, null, { timeout: 5000 });
+  check("кат раскрыт", (await page.evaluate(() => document.querySelector("[data-activate-more]")?.open === true)) === true);
 
   // Активация файлом в браузере: системного диалога нет, отказ обязателен.
-  await page.getByRole("button", { name: /файлом/i }).click();
+  await page.fill("#activation-code", FULL_CODE);
+  await page.click("[data-activate-file]");
   await page.waitForTimeout(600);
   check("кнопка файла не роняет экран", (await page.evaluate(() => Boolean(document.querySelector(".activate__card")))) === true);
 
@@ -181,7 +193,7 @@ try {
   // хранятся — в браузере честно говорится, что мессенджер откроется в
   // приложении, а копирование и файл заявки работают уже здесь.
   const requestToggle = page.getByRole("button", { name: "Отправить заявку владельцу", exact: true });
-  check("кнопка «Отправить заявку владельцу» на экране", (await requestToggle.count()) === 1);
+  check("кнопка заявки есть под катом", (await requestToggle.count()) === 1);
   await requestToggle.click();
   await page.waitForSelector("[data-request-panel]:not([hidden])", { timeout: 10000 });
 
@@ -237,10 +249,15 @@ try {
   const tampered = await readNotes(page);
   check("при порче файлов показано предупреждение", /изменены/i.test(tampered.tamper), tampered.tamper);
   check("предупреждение о порче видимо (не скрыто стилем)", tampered.tamperVisible === true);
-  const disabled = await page.evaluate(() =>
-    [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
+  const disabled = await page.evaluate(() => ({
+    actions: [...document.querySelectorAll(".activate__actions .btn")].map((node) => node.disabled === true),
+    file: document.querySelector("[data-activate-file]")?.disabled === true,
+  }));
+  check(
+    "кнопки активации заблокированы при порче",
+    disabled.actions.length === 1 && disabled.actions.every(Boolean) && disabled.file === true,
+    `${disabled.actions.join(",")} file=${disabled.file}`,
   );
-  check("кнопки активации заблокированы при порче", disabled.length === 3 && disabled.every(Boolean), String(disabled));
   const requestDisabled = await page.evaluate(() => document.querySelector("[data-request-toggle]")?.disabled === true);
   check("кнопка заявки тоже заблокирована при порче", requestDisabled === true);
   check("при порче интерфейс приложения не построен", (await page.evaluate(() => Boolean(document.querySelector(".sidebar")))) === false);

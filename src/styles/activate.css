@@ -64,10 +64,6 @@
   color: var(--text-muted);
 }
 
-.activate__lead {
-  max-width: 56ch;
-}
-
 /* Код длинный (128 символов): моноширинный набор, группы по 8 символов. */
 .activate__input {
   font-family: var(--font-mono);
@@ -133,6 +129,33 @@
   letter-spacing: 0.08em;
   color: var(--text-primary);
 }
+
+.activate__more {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.activate__more-summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  list-style: none;
+  user-select: none;
+}
+.activate__more-summary::before {
+  content: "›";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.activate__more[open] > .activate__more-summary::before { transform: rotate(90deg); }
+.activate__more-summary:hover { color: var(--green); }
+.activate__more-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+.activate__card--minimal .activate__actions .btn { min-width: 150px; }
 
 .activate__details {
   padding-top: var(--sp-1);

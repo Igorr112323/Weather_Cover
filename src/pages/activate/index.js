@@ -7,8 +7,13 @@
  * «обойти» этот экран правкой интерфейса нельзя.
  *
  * Лицензия бессрочная: на экране нет ни срока действия, ни обратного отсчёта,
- * ни дат — только серийный номер лицензии и идентификатор компьютера
- * (нужен для персональных кодов и для обращений в поддержку).
+ * ни дат, ни «условий лицензии» — только поле для кода и кнопка «Активировать».
+ *
+ * Всё остальное свёрнуто в одну строку внизу («Код компьютера и заявка»): код
+ * этого компьютера с кнопкой копирования, каналы связи с владельцем, сохранение
+ * файла заявки и активация файлом .agrolic. Покупатель, который просто
+ * вставляет полученный код, ничего лишнего не видит; тому, кому код ещё нужно
+ * получить, не придётся искать, где это делать.
  *
  * Заявка владельцу: кнопка формирует текст заявки (код компьютера, полный
  * идентификатор, версия) и открывает мессенджер/почту покупателя с готовым
@@ -92,7 +97,7 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     autocapitalize: "characters",
     wrap: "hard",
     placeholder: "AGRO-XXXXXXXX-XXXXXXXX-…",
-    "aria-describedby": "activation-hint",
+    title: "Вставьте код целиком — пробелы и переносы строк не мешают",
     disabled: status?.tampered ? true : null,
   });
 
@@ -142,32 +147,10 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     label: "Активировать",
     tone: "primary",
     icon: "check",
+    block: true,
+    title: "Ctrl+Enter — активировать",
     disabled: status?.tampered === true,
     onClick: () => submit(),
-  });
-
-  const pasteButton = createButton({
-    label: "Вставить из буфера",
-    tone: "secondary",
-    icon: "clipboard-list",
-    disabled: status?.tampered === true,
-    onClick: async (_event, button) => {
-      let text = "";
-      try {
-        text = (await navigator.clipboard?.readText?.()) ?? "";
-      } catch {
-        text = "";
-      }
-      if (!text.trim()) {
-        toast.info("В буфере обмена пусто или браузер не дал к нему доступ");
-        return;
-      }
-      button.setLoading(true, "Проверяем");
-      input.value = formatCodeText(text);
-      updateCount();
-      button.setLoading(false);
-      await submit();
-    },
   });
 
   const fileButton = createButton({
@@ -192,6 +175,7 @@ export function createActivationPage({ status, version = "", onActivated } = {})
       showError(result?.message || "Файл не принят: проверьте, что это файл лицензии этого приложения.");
     },
   });
+  fileButton.setAttribute("data-activate-file", "");
 
   async function submit() {
     if (busy || finished) return;
@@ -210,7 +194,6 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     busy = true;
     hideError();
     activateButton.setLoading(true, "Проверяем код");
-    pasteButton.setDisabled(true);
     fileButton.setDisabled(true);
 
     const result = await activateLicense(code);
@@ -223,7 +206,6 @@ export function createActivationPage({ status, version = "", onActivated } = {})
       return;
     }
 
-    pasteButton.setDisabled(false);
     fileButton.setDisabled(false);
     showError(result?.message || result?.status?.message || "Код активации не принят.");
     input.focus();
@@ -248,11 +230,11 @@ export function createActivationPage({ status, version = "", onActivated } = {})
     h("div", { class: "activate__machine-text" }, [
       h("span", { class: "block-title", text: "Этот компьютер" }),
       h("code", { class: "activate__machine-id", text: machineShort }),
-      h(
-        "span", { class: "muted", text: status?.machineQuality === "low"
-          ? "Идентификатор приблизительный: системный номер недоступен. Персональный код может не подойти — используйте общий."
-          : "Понадобится только для персонального кода" },
-      ),
+      // Пояснение про приблизительный идентификатор оставляем: оно влияет на
+      // выбор типа кода, но показывается только когда это действительно так.
+      ...(status?.machineQuality === "low"
+        ? [h("span", { class: "muted", text: "Идентификатор приблизительный — персональный код может не подойти, берите общий." })]
+        : []),
     ]),
     createButton({
       label: "Скопировать",
@@ -392,27 +374,15 @@ export function createActivationPage({ status, version = "", onActivated } = {})
   });
   requestToggle.setAttribute("data-request-toggle", "");
 
-  const requestSection = h("div", { class: "activate__request" }, [
-    h("span", { class: "block-title", text: "Заявка владельцу" }),
-    h("p", {
-      class: "muted activate__lead",
-      text: "Нужен персональный код? Нажмите кнопку — откроется мессенджер или почта с готовой заявкой: владельцу понадобится только код этого компьютера. Если вы переустановили Windows и прежний код больше не подходит — владелец выпустит новый по этой же заявке.",
-    }),
-    requestToggle,
-    requestPanel,
+  const requestSection = h("div", { class: "activate__request" }, [requestToggle, requestPanel]);
+
+  // Всё, что не нужно при обычном вводе кода, живёт под одной строкой.
+  const more = h("details", { class: "activate__more", "data-activate-more": "" }, [
+    h("summary", { class: "activate__more-summary", text: "Код компьютера и заявка" }),
+    h("div", { class: "activate__more-body" }, [machineRow, requestSection, fileButton]),
   ]);
 
-
-  const details = h("dl", { class: "kv activate__details" }, [
-    h("dt", { text: "Условия лицензии" }),
-    h("dd", { class: "num", text: "Бессрочная, без ограничения по дате" }),
-    h("dt", { text: "Серийный номер" }),
-    h("dd", { class: "num", text: status?.serial || "присваивается при активации" }),
-    h("dt", { text: "Версия приложения" }),
-    h("dd", { class: "num", text: version || "—" }),
-  ]);
-
-  const card = h("div", { class: "activate__card" }, [
+  const card = h("div", { class: "activate__card activate__card--minimal" }, [
     h("div", { class: "activate__brand" }, [
       h("img", { class: "activate__logo", src: iconUrl, alt: "", width: "40", height: "40" }),
       h("div", { class: "activate__names" }, [
@@ -421,27 +391,16 @@ export function createActivationPage({ status, version = "", onActivated } = {})
       ]),
     ]),
     h("h1", { class: "page-title", text: "Активация приложения" }),
-    h("p", {
-      class: "muted activate__lead",
-      text: "Введите код активации. Лицензия бессрочная: срок действия кода не ограничен, дата окончания не задаётся.",
-    }),
     tamperNote.node,
     storeNote.node,
     h("div", { class: "field" }, [
       h("label", { class: "field__label", for: "activation-code" }, [h("span", { text: "Код активации" })]),
       h("div", { class: "control control--multiline" }, [input]),
-      h("div", { class: "activate__hintrow" }, [
-        h("p", { class: "field__hint", id: "activation-hint", text: "Код можно вставить из письма целиком — пробелы и переносы строк не мешают. Ctrl+Enter активирует." }),
-        lengthHint,
-      ]),
+      h("div", { class: "activate__hintrow" }, [lengthHint]),
     ]),
     errorNote.node,
-    h("div", { class: "activate__actions" }, [activateButton, pasteButton, fileButton]),
-    h("div", { class: "activate__divider", "aria-hidden": "true" }),
-    machineRow,
-    h("div", { class: "activate__divider", "aria-hidden": "true" }),
-    requestSection,
-    details,
+    h("div", { class: "activate__actions" }, [activateButton]),
+    more,
   ]);
 
   // Полоса перетаскивания окна: системной строки заголовка нет, поэтому
