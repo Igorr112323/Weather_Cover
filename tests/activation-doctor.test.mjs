@@ -192,9 +192,13 @@ describe("каталоги профиля, где ищется лицензия"
   });
 
   it("Linux уважает XDG_CONFIG_HOME, macOS берёт Application Support", () => {
-    assert.match(doctor.licenseDirectoryCandidates({ platform: "linux", env: { XDG_CONFIG_HOME: "/tmp/cfg", HOME: "/home/x" } })[0], /\/tmp\/cfg/);
-    assert.match(doctor.licenseDirectoryCandidates({ platform: "linux", env: { HOME: "/home/x" } })[0], /\/home\/x\/\.config/);
-    assert.match(doctor.licenseDirectoryCandidates({ platform: "darwin", env: { HOME: "/Users/x" } })[0], /Library\/Application Support/);
+    // Сравниваем части пути, а не строку: на Windows «/tmp/cfg» превращается в
+    // «\tmp\cfg», и текстовое сравнение с косой чертой падало бы только там.
+    const parts = (value) => String(value).split(/[\\/]+/).filter(Boolean);
+    const first = (options) => parts(doctor.licenseDirectoryCandidates(options)[0]);
+    assert.deepEqual(first({ platform: "linux", env: { XDG_CONFIG_HOME: "/tmp/cfg", HOME: "/home/x" } }), ["tmp", "cfg", "AgroPrognoz"]);
+    assert.deepEqual(first({ platform: "linux", env: { HOME: "/home/x" } }), ["home", "x", ".config", "AgroPrognoz"]);
+    assert.deepEqual(first({ platform: "darwin", env: { HOME: "/Users/x" } }), ["Users", "x", "Library", "Application Support", "AgroPrognoz"]);
   });
 
   it("распознаёт файлы лицензии и их карантины", () => {

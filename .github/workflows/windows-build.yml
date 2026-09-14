@@ -62,7 +62,13 @@ jobs:
       - name: Unit-тесты (включая лицензию и защиту)
         run: |
           set -o pipefail
-          npm test 2>&1 | tee ci-logs/test.log
+          if ! npm test 2>&1 | tee ci-logs/test.log; then
+            # Выжимка падений — в конец лога: автоотчёт scripts/ci-report.mjs
+            # приводит хвост, а сами логи Actions видны только через отдельный хост.
+            echo "===== ПАДАЮЩИЕ ТЕСТЫ (выжимка) ====="
+            grep -E "^ *not ok|error: |AssertionError|expected|actual" ci-logs/test.log | tail -60
+            exit 1
+          fi
 
       - name: Сборка renderer
         run: |
