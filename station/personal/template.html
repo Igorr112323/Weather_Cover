@@ -264,24 +264,28 @@
         const keys = entry;
         const config = publicConfig();
 
-        // Если вставили одну строку privateKey, ключа в списке нет: открытый ключ
-        // читается из самого PKCS#8, а keyId берётся из списка приложения. Иначе
-        // подпись встала бы чужим открытым ключом и код бы не приняли.
+        // Если вставили одну строку privateKey, keyId неизвестен (по умолчанию он 1).
+        // Открытый ключ внутри PKCS#8 есть не всегда — Node его не пишет, — поэтому
+        // ключ находится доказательством: подписываем вызов и сверяем со списком
+        // приложения. Без этого код встал бы подписью key-id=1 и его бы не приняли.
         let keyId = keys.keyId;
         let publicKey = keys.publicKey;
         if (!publicKey) {
-          try {
-            publicKey = AGRO.publicFromPrivate(keys.privateKeyBase64) || "";
-          } catch {
-            publicKey = "";
+          const proof = await AGRO.matchKey({ privateKeyBase64: keys.privateKeyBase64, keys: config.keys });
+          if (!proof.ok) {
+            note(`Ключ не принят: ${proof.message ?? "подпись не совпала"}. Похоже, это закрытый ключ от другого набора.`, true);
+            return;
           }
-        }
-        const known = config.keys.find((item) => item.publicKey === publicKey);
-        if (known) {
-          keyId = Number(known.keyId) || keyId;
-        } else if (publicKey && config.keys.length) {
-          note("Код не будет принят: это закрытый ключ от другого набора — в приложении (electron/license/keys.cjs) записан другой открытый ключ.", true);
-          return;
+          keyId = Number(proof.keyId) || keyId;
+          publicKey = config.keys.find((item) => (Number(item.keyId) || 1) === keyId)?.publicKey ?? "";
+        } else {
+          const known = config.keys.find((item) => item.publicKey === publicKey);
+          if (known) {
+            keyId = Number(known.keyId) || keyId;
+          } else if (config.keys.length) {
+            note("Код не будет принят: это закрытый ключ от другого набора — в приложении (electron/license/keys.cjs) записан другой открытый ключ.", true);
+            return;
+          }
         }
 
         note("Подписываю…");
