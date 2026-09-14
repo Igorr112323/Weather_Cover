@@ -59,13 +59,21 @@ const { createFileStore } = require("./persistence.cjs");
 const { CSP_PRODUCTION, EXTERNAL_LINK_HOSTS } = require("./csp.cjs");
 const { createGuard } = require("./license/guard.cjs");
 const licenseRequest = require("./license/request.cjs");
+const { describeCheckInstance, licenseFileNameFor, resolveCheckInstance } = require("./license/checkmode.cjs");
 const { decideLaunch, hardenWebContentsAgainstDebugging } = require("./license/shield.cjs");
 
 const PROTOCOL_NAME = "app";
 const PROTOCOL_HOST = "agroprognoz.local";
 const DB_FILE_NAME = "agroprognoz.sqlite";
+/**
+ * Проверочный режим: у копии `AgroPrognoz-check-<id>.exe` (или запуска с
+ * `--check-instance=<id>`) свой файл лицензии, поэтому она всегда спрашивает код
+ * активации — даже на компьютере, где основная копия уже активирована.
+ * Ничего кроме имени файла лицензии этот режим не меняет.
+ */
+const CHECK_MODE = resolveCheckInstance({ argv: process.argv, env: process.env, execPath: process.execPath });
 /** Файл активированной лицензии в каталоге профиля (шифруется, см. license/store.cjs). */
-const LICENSE_FILE_NAME = "agroprognoz.license";
+const LICENSE_FILE_NAME = licenseFileNameFor(CHECK_MODE.instance);
 /** Файл лицензии читаем через системный диалог: большой файл — не лицензия. */
 const LICENSE_FILE_MAX_BYTES = 64 * 1024;
 /** Предел текста кода, пришедшего из поля ввода. */
@@ -842,9 +850,12 @@ if (!gotLock) {
     licenseGuard = createGuard({
       appRoot: ROOT,
       userDataDir: app.getPath("userData"),
+      licenseFileName: LICENSE_FILE_NAME,
       safeStorage,
       log,
     });
+    const checkNote = describeCheckInstance(CHECK_MODE);
+    if (checkNote) log(`license: ${checkNote}`);
     try {
       const license = await licenseGuard.initialize();
       log(

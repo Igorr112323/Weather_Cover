@@ -52,6 +52,13 @@ npm run license:verify -- "<код>"             # разобрать код
 npm run license:revoke -- <серийник>          # отозвать лицензию
 ```
 
+Проверить активацию на своём компьютере, где она уже пройдена (файл лицензии один
+на все копии программы), помогают `npm run license:reset` и копии
+`AgroPrognoz-check-<id>.exe` со своей лицензией, а `npm run activation:selftest`
+прогоняет весь механизм целиком — 21 проверка. Веб-станция выдачи кодов со
+ссылкой на скачивание такого EXE — в каталоге [`station/`](station)
+(`npm run station`), подробнее — [`docs/ПРОВЕРКА-АКТИВАЦИИ.md`](docs/ПРОВЕРКА-АКТИВАЦИИ.md).
+
 Журнал выданных кодов — `secrets/ledger.csv` (даты — только для учёта выдачи).
 Необязательный модуль доставки (СМС SMS.ru/SMSC.ru, Telegram-бот, SMTP)
 включается переменными окружения и работает только из студии. Инструкция —
@@ -113,6 +120,10 @@ Production-режим Electron: `npm run build`, затем `npm start`
 | `npm run verify:package` | Разбор собранного приложения: состав `app.asar`, целостность упакованных файлов, страж лицензии, Electron Fuses в `AgroPrognoz.exe`, анти-слив (нет закрытого ключа, журнала, контактов владельца) |
 | `npm run test:gate` | Браузерная проверка защиты: production-сборка вне Electron работать не должна (нужен `npm run preview`) |
 | `npm run test:activation` | Браузерная проверка экрана активации на dev-сервере (`?license=demo`), включая кнопку заявки |
+| `npm run license:status` / `license:reset` / `license:machine` | Диагностика активации на своём ПК, её сброс (с резервной копией файла) и код этого компьютера |
+| `npm run activation:selftest` | Полный сценарий активации на настоящем страже, во временном каталоге и с выдуманным ключом |
+| `npm run station` | Веб-станция «Активация ключей»: разбор заявки → код → журнал → ссылка на проверочный EXE |
+| `npm run station:standalone` | Собрать автономную страницу выдачи кодов одним файлом (`station/standalone/`) — открывается двойным щелчком, без Node |
 | `npm run license:studio` | «Студия лицензий»: локальная страница выдачи кодов с формой, журналом и отзывом (машина владельца) |
 | `npm run license:keygen` | Создать закрытый ключ лицензий (`secrets/license-key.json`) и добавить открытый в `electron/license/keys.cjs` |
 | `npm run license:issue` | Выписать бессрочные коды активации (`--count`, `--bind`, `--out`, `--note`) |
@@ -303,15 +314,21 @@ Fuse `enableEmbeddedAsarIntegrityValidation` намеренно не включ�
 ```text
 electron/           main / preload / файловое хранилище / CSP
 electron/license/   ядро лицензии, ключи, хранилище, целостность, страж, shield,
-                    request.cjs (контакт владельца и текст заявки)
+                    request.cjs (контакт владельца и текст заявки),
+                    checkmode.cjs (проверочные копии AgroPrognoz-check-<id>.exe)
 src/                renderer: страницы, компоненты, сервисы, стили
 src/pages/activate/ экран активации (ввод кода + заявка владельцу)
 calculations/       демодвижок (точка замены) + календарная арифметика
 scripts/            prepare-assets, иконка и заставка, dev/preview, license-tool,
                     license-shared (общая библиотека выдачи), license-studio
-                    (студия владельца), harden (обфускация + манифест),
+                    (студия владельца), activation-doctor (диагностика и сброс
+                    активации + selftest), export-station (выгрузка станции),
+                    harden (обфускация + манифест),
                     verify-package (разбор сборки + анти-слив)
-docs/               ЗАЩИТА.md — лицензия, выдача кодов, модель угроз
+station/            веб-станция «Активация ключей»: разбор заявки → код → журнал →
+                    ссылка на проверочный EXE (можно вынести в свой репозиторий)
+docs/               ЗАЩИТА.md — модель угроз; ВЛАДЕЛЬЦУ.md — сборка и выдача кодов;
+                    ПРОВЕРКА-АКТИВАЦИИ.md — как проверить активацию на своём ПК
 build/              иконка (npm run icon) и заставка portable EXE (npm run splash)
 hardened/           защищённая копия electron/ для упаковки (создаётся сборкой)
 secrets/            закрытый ключ лицензий и журнал выданных кодов (в .gitignore)

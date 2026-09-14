@@ -1,0 +1,23 @@
+{
+  "name": "agro-activation-keys",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Веб-станция «Активация ключей»: выдача кодов активации и проверочных EXE для «АгроПрогноз — Кукуруза».",
+  "author": "AgroPrognoz",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "no-open": "node src/main.mjs --no-open",
+    "sync": "node scripts/sync-vendor.mjs",
+    "sync:check": "node scripts/sync-vendor.mjs --check",
+    "standalone": "node scripts/build-standalone.mjs",
+    "standalone:check": "node scripts/build-standalone.mjs --check",
+    "test": "node --test tests/station.test.mjs tests/standalone.test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

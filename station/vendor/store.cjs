@@ -1,3 +1,5 @@
+/* vendored: точная копия electron/license/store.cjs из проекта Weather_Cover.
+ * Не править руками — обновлять скриптом scripts/sync-vendor.mjs. */
 /**
  * Хранилище активированной лицензии (main process).
  *

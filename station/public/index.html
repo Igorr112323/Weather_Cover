@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Активация ключей — АгроПрогноз</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">AKE</span>
+        <div>
+          <h1>Активация ключей</h1>
+          <p class="sub">Выдача кодов · проверочные EXE · журнал выдачи — всё на этом компьютере, без интернета</p>
+        </div>
+      </div>
+      <div id="chips" class="chips" aria-live="polite"></div>
+    </header>
+
+    <nav class="tabs" id="tabs" role="tablist">
+      <button class="tab is-active" data-tab="issue" role="tab">Заявка → код</button>
+      <button class="tab" data-tab="verify" role="tab">Проверка кода</button>
+      <button class="tab" data-tab="exe" role="tab">Проверочный EXE</button>
+      <button class="tab" data-tab="pc" role="tab">Мой ПК</button>
+      <button class="tab" data-tab="ledger" role="tab">Журнал</button>
+    </nav>
+
+    <main>
+      <!-- Заявка -->
+      <section class="panel is-active" id="tab-issue">
+        <div class="grid">
+          <div class="col">
+            <label class="field">
+              <span>Что прислал пользователь — текст заявки, сообщение в мессенджере или содержимое файла .agrorequest</span>
+              <textarea id="requestText" rows="9" placeholder="Заявка на персональный код активации&#10;Приложение: АгроПрогноз — Кукуруза 0.2.1&#10;Код компьютера: ZZG5-9ZKT&#10;Полный идентификатор: 39b4…&#10;Меня зовут Иван, +7 960 484-34-63"></textarea>
+            </label>
+            <div class="row">
+              <button class="btn" id="parse">Разобрать заявку</button>
+              <input id="machineCode" class="mono" placeholder="или код компьютера: ZZG5-9ZKT / 64-символьный id" />
+              <button class="btn ghost" id="pasteRequest">Вставить из буфера</button>
+            </div>
+            <div id="parseResult" class="hint"></div>
+
+            <div class="fields">
+              <label class="field"><span>Имя покупателя</span><input id="name" placeholder="Иван" /></label>
+              <label class="field"><span>Телефон</span><input id="phone" placeholder="+7 960 484-34-63" /></label>
+              <label class="field"><span>Почта</span><input id="email" placeholder="buyer@mail.ru" /></label>
+              <label class="field"><span>Пометка</span><input id="note" placeholder="заказ №14, онлайн-школа" /></label>
+            </div>
+            <label class="check"><input type="checkbox" id="universal" /> Универсальный код (работает на любом компьютере — выдавать только с подтверждением)</label>
+            <label class="check"><input type="checkbox" id="makeExe" checked /> Приложить ссылку на проверочный EXE (спросит код даже на активированном ПК)</label>
+            <div class="row">
+              <button class="btn primary" id="issue">Сгенерировать код</button>
+              <span id="issueHint" class="hint"></span>
+            </div>
+          </div>
+
+          <div class="col">
+            <div id="result" class="result empty">Здесь появится готовый код, сообщение покупателю, файл .agrolic и ссылка на проверочный EXE.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Проверка кода -->
+      <section class="panel" id="tab-verify">
+        <div class="grid">
+          <div class="col">
+            <label class="field">
+              <span>Код активации (можно вставить вместе с письмом — лишний текст станция пропустит)</span>
+              <textarea id="codeText" rows="7" class="mono" placeholder="AGRO-XXXXXXXX-XXXXXXXX-…"></textarea>
+            </label>
+            <div class="row">
+              <input id="verifyMachine" class="mono" placeholder="код компьютера для сверки привязки (необязательно)" />
+              <button class="btn primary" id="verify">Проверить код</button>
+            </div>
+            <p class="hint">Проверка офлайн: подпись Ed25519, совпадение продукта, список отзыва и отпечаток компьютера. Тот же код, что использует приложение.</p>
+          </div>
+          <div class="col"><div id="verifyResult" class="result empty">Результат проверки.</div></div>
+        </div>
+      </section>
+
+      <!-- Проверочный EXE -->
+      <section class="panel" id="tab-exe">
+        <div class="grid">
+          <div class="col">
+            <h2>Зачем нужен проверочный EXE</h2>
+            <p class="hint">
+              Приложение хранит лицензию в профиле (<code>%APPDATA%\AgroPrognoz\agroprognoz.license</code>), и файл один на все копии программы.
+              Поэтому свежий EXE на активированном компьютере код <em>не спросит</em>. Проверочная копия называется
+              <code>AgroPrognoz-check-&lt;id&gt;.exe</code> и хранит лицензию в своём файле — она обязана запросить код.
+              Это тот же самый EXE: меняются только имя файла и место хранения лицензии.
+            </p>
+            <div class="row">
+              <label class="field grow"><span>Идентификатор копии (оставьте пустым — станция придумает)</span><input id="instance" class="mono" /></label>
+              <select id="exeSource" class="grow"></select>
+            </div>
+            <div class="row">
+              <button class="btn primary" id="makeExeBtn">Сделать проверочную копию</button>
+              <button class="btn ghost" id="newInstance">Новый идентификатор</button>
+            </div>
+            <div id="exeResult" class="result empty">Ссылка на скачивание появится здесь.</div>
+          </div>
+          <div class="col">
+            <h2>Что найдено на этом компьютере</h2>
+            <div id="exeList" class="list"></div>
+            <p class="hint" id="exeConfig"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Мой ПК -->
+      <section class="panel" id="tab-pc">
+        <div class="grid">
+          <div class="col">
+            <h2>Активация на этом компьютере</h2>
+            <div id="pcBlock" class="result">Загружаем…</div>
+            <div class="row">
+              <button class="btn" id="refreshPc">Обновить</button>
+              <button class="btn warn" id="resetPc">Сбросить активацию</button>
+              <button class="btn ghost" id="resetCheck">Сбросить только проверочные копии</button>
+            </div>
+            <p class="hint">Сброс не «разблокирует» приложение: он убирает сохранённую лицензию, и при следующем запуске код придётся ввести заново — с полной проверкой подписи.</p>
+          </div>
+          <div class="col">
+            <h2>Проверка механизма активации</h2>
+            <p class="hint">
+              Полный сценарий (чистый компьютер → код принят → перезапуск → чужая машина → подмена файла → сброс → отзыв → подделка)
+              прогоняется в проекте приложения командой:
+            </p>
+            <pre class="cmd">npm run activation:selftest</pre>
+            <p class="hint">А код этого компьютера, который просят в заявке:</p>
+            <pre class="cmd">npm run license:machine</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Журнал -->
+      <section class="panel" id="tab-ledger">
+        <div class="row">
+          <input id="ledgerSearch" placeholder="Поиск: имя, телефон, серийник, код компьютера…" />
+          <button class="btn ghost" id="ledgerRefresh">Обновить</button>
+          <a class="btn ghost" id="ledgerCsv" href="#">Скачать CSV</a>
+        </div>
+        <div id="ledger" class="table"></div>
+      </section>
+    </main>
+
+    <footer>
+      <span id="footnote"></span>
+      <span class="hint">
+        Есть и офлайн-копия станции одним файлом: <a href="/aktivaciya-klyuchey.html" download>aktivaciya-klyuchey.html</a>
+        — скачайте и откройте двойным щелчком (журнал в ней живёт в этом браузере).
+      </span>
+    </footer>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
